@@ -58,10 +58,14 @@ namespace SharpNativeDLL
         [DllImport("Kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         public unsafe static extern uint CreateThread(uint* lpThreadAttributes, uint dwStackSize, ThreadStart lpStartAddress, uint* lpParameter, uint dwCreationFlags, out uint lpThreadId);
 
-        public static void SendKey(int parent, int key_code)
-        {
-            IntPtr handle = FindWindowEx(parent, IntPtr.Zero, "edit", null);
-            PostMessage(handle, WM_KEYDOWN, key_code, 1);
-        }
+        [DllImport("kernel32.dll")]
+        public static extern bool ReadProcessMemory(int hProcess, int lpBaseAddress, byte[] lpBuffer, int dwSize, ref int lpNumberOfBytesRead);
+
+        [DllImport("kernel32.dll")]
+        public static extern IntPtr OpenProcess(int dwDesiredAccess, bool bInheritHandle, int dwProcessId);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool WriteProcessMemory(int hProcess, int lpBaseAddress, byte[] lpBuffer, int dwSize, ref int lpNumberOfBytesWritten);
+
     }
 }
