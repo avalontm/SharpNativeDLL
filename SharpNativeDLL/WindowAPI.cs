@@ -40,8 +40,8 @@ namespace SharpNativeDLL
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
 
-        [DllImport("user32.dll", SetLastError = true)]
-        public static extern IntPtr FindWindowEx(IntPtr parentHandle, IntPtr hWndChildAfter, string className, string? windowTitle);
+        [DllImport("user32.dll", CharSet= CharSet.Unicode)]
+        public static extern IntPtr FindWindowEx(IntPtr parentHandle, IntPtr childAfter, string lclassName, string windowTitle);
 
         [DllImport("user32.dll")]
         public static extern int SendMessage(IntPtr hWnd, uint uMsg, uint wParam, string lParam);
@@ -70,5 +70,8 @@ namespace SharpNativeDLL
 
         [DllImport("user32.dll")]
         public static extern bool ShowWindow(IntPtr hWnd, uint nCmdShow);
+
+        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
     }
 }
