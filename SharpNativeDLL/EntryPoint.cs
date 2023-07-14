@@ -10,16 +10,19 @@ namespace SharpNativeDLL
                            DLL_THREAD_ATTACH = 2,
                            DLL_THREAD_DETACH = 3;
 
-       static int  ERROR_ACCESS_DENIED  = 5;
-
         [UnmanagedCallersOnly(EntryPoint = "DllMain", CallConvs = new[] { typeof(CallConvStdcall) })]
-        public static bool DllMain(IntPtr hModule, uint ul_reason_for_call, IntPtr lpReserved)
+        public static bool DllMain(IntPtr hModule, uint nReason, IntPtr lpReserved)
         {
-            switch (ul_reason_for_call)
+            switch (nReason)
             {
                 case DLL_PROCESS_ATTACH:
                     onMain();
                     break;
+                case DLL_PROCESS_DETACH:
+                    break;
+                case DLL_THREAD_ATTACH:
+                    break;
+                case DLL_THREAD_DETACH:
                 default:
 
                     break;
