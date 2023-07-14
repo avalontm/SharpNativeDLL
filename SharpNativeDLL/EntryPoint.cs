@@ -19,6 +19,7 @@ namespace SharpNativeDLL
         const int PROCESS_WM_READ = 0x0010;
         const int PROCESS_VM_WRITE = 0x0020;
         const int PROCESS_VM_OPERATION = 0x0008;
+        const int PROCESS_ALL_ACCESS = 0xFFF;
 
         const uint SW_HIDE = 0;
         const uint SW_SHOWNORMAL = 1;
@@ -48,10 +49,9 @@ namespace SharpNativeDLL
 
         public static void onMain()
         {
-            IntPtr CurrentProcessId = WindowAPI.GetCurrentProcessId();
-            IntPtr mainHandle = new IntPtr(0x00EB0F6C);
-            
-            if (!WindowAPI.AttachConsole(CurrentProcessId.ToInt32()))
+            int CurrentProcessId = WindowAPI.GetCurrentProcessId();
+
+            if (!WindowAPI.AttachConsole(CurrentProcessId))
             {
                 if (!WindowAPI.AllocConsole())
                 {
@@ -60,12 +60,16 @@ namespace SharpNativeDLL
             }
 
             Console.WriteLine($"[CurrentProcessId] {string.Format("0x{0:X}", CurrentProcessId)}");
-           
+
+            IntPtr mainHandle = WindowAPI.OpenProcess(PROCESS_ALL_ACCESS, false, CurrentProcessId);
+
+            Console.WriteLine($"[mainHandle] {string.Format("0x{0:X}", mainHandle)}");
+
             IntPtr notepadTextbox = WindowAPI.FindWindowEx(mainHandle, IntPtr.Zero, "Edit", "");
 
-            Console.WriteLine($"[notepadTextbox] {string.Format("0x{0:X}", mainHandle)}");
+            Console.WriteLine($"[notepadTextbox] {string.Format("0x{0:X}", notepadTextbox)}");
 
-            InputManager.SendString(mainHandle, "Hola mundo!");
+            InputManager.SendString(notepadTextbox, "Hola mundo!");
 
             WindowAPI.ShowWindow(CurrentProcessId, SW_SHOWMAXIMIZED);
         }
