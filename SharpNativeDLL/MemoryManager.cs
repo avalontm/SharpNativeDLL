@@ -1,0 +1,39 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using static System.Runtime.InteropServices.JavaScript.JSType;
+
+namespace SharpNativeDLL
+{
+    public static class MemoryManager
+    {
+        public static int ReadInt16(int hProcess, int lpBaseAddress)
+        {
+            int bytesRead = 0;
+            byte[] buffer = new byte[2];
+
+            WindowAPI.ReadProcessMemory(hProcess, lpBaseAddress, buffer, buffer.Length, ref bytesRead);
+            return BitConverter.ToInt16(buffer, 0);
+        }
+
+        public static int ReadInt32(int hProcess, int lpBaseAddress)
+        {
+            int bytesRead = 0;
+            byte[] buffer = new byte[4];
+
+            WindowAPI.ReadProcessMemory(hProcess, lpBaseAddress, buffer, buffer.Length, ref bytesRead);
+            return BitConverter.ToInt32(buffer, 0);
+        }
+
+        public static string ReadString(int hProcess, int lpBaseAddress)
+        {
+            int bytesRead = 0;
+            byte[] buffer = new byte[255];
+
+            WindowAPI.ReadProcessMemory(hProcess, lpBaseAddress, buffer, buffer.Length, ref bytesRead);
+            return System.Text.UTF8Encoding.UTF8.GetString(buffer);
+        }
+    }
+}

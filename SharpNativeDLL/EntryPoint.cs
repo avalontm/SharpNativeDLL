@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -9,14 +10,19 @@ namespace SharpNativeDLL
 {
     public class EntryPoint
     {
-        private const uint DLL_PROCESS_DETACH = 0,
-                           DLL_PROCESS_ATTACH = 1,
-                           DLL_THREAD_ATTACH = 2,
-                           DLL_THREAD_DETACH = 3;
+        const uint DLL_PROCESS_DETACH = 0,
+                   DLL_PROCESS_ATTACH = 1,
+                   DLL_THREAD_ATTACH = 2,
+                   DLL_THREAD_DETACH = 3;
 
         const int PROCESS_WM_READ = 0x0010;
         const int PROCESS_VM_WRITE = 0x0020;
         const int PROCESS_VM_OPERATION = 0x0008;
+
+        const uint SW_HIDE = 0;
+        const uint SW_SHOWNORMAL = 1;
+        const uint SW_SHOWMINIMIZED = 2;
+        const uint SW_SHOWMAXIMIZED = 3;
 
         [UnmanagedCallersOnly(EntryPoint = "DllMain", CallConvs = new[] { typeof(CallConvStdcall) })]
         public static bool DllMain(IntPtr hModule, uint nReason, IntPtr lpReserved)
@@ -41,29 +47,26 @@ namespace SharpNativeDLL
 
         public static void onMain()
         {
-            int processID = WindowAPI.GetCurrentProcessId();
-            IntPtr processHandle = WindowAPI.OpenProcess(PROCESS_WM_READ, false, processID);
-
-            if (!WindowAPI.AttachConsole(processID))
+            int CurrentProcessId = WindowAPI.GetCurrentProcessId();
+            IntPtr mainHandle = WindowAPI.OpenProcess(PROCESS_WM_READ, false, CurrentProcessId);
+            
+            if (!WindowAPI.AttachConsole(CurrentProcessId))
             {
-                // A console was not allocated, so we need to make one.
                 if (!WindowAPI.AllocConsole())
                 {
                     WindowAPI.MessageBox(0, "No se pudo asignar una consola.", "Error", 0);
                 }
             }
 
-            Console.WriteLine($"[ProcessHandle] {processHandle}");
+            Console.WriteLine($"[ProcessHandle] {string.Format("0x{0:X}", CurrentProcessId)}");
 
-            int bytesRead = 0;
-            byte[] buffer = new byte[4];
+            IntPtr notepadTextbox = WindowAPI.FindWindowEx(CurrentProcessId, IntPtr.Zero, "Edit", null);
 
-            WindowAPI.ReadProcessMemory((int)processHandle, 0x3CF1003C, buffer, buffer.Length, ref bytesRead);
+            Console.WriteLine($"[notepadTextbox] {notepadTextbox}");
 
-            Console.WriteLine($"{BitConverter.ToInt32(buffer, 0)} ({bytesRead} bytes)");
+            InputManager.SendString(notepadTextbox, "Hola mundo!");
 
+            WindowAPI.ShowWindow(notepadTextbox, SW_SHOWMAXIMIZED);
         }
-
-
     }
 }
