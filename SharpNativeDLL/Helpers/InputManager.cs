@@ -5,7 +5,7 @@ using System.Reflection.Metadata;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace SharpNativeDLL
+namespace SharpNativeDLL.Helpers
 {
     public static class InputManager
     {

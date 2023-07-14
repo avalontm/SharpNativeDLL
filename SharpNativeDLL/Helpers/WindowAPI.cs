@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace SharpNativeDLL
+namespace SharpNativeDLL.Helpers
 {
     public static class WindowAPI
     {
@@ -46,7 +46,7 @@ namespace SharpNativeDLL
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
 
-        [DllImport("user32.dll", CharSet= CharSet.Unicode)]
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         public static extern IntPtr FindWindowEx(IntPtr parentHandle, IntPtr childAfter, string lclassName, string windowTitle);
 
         [DllImport("user32.dll")]

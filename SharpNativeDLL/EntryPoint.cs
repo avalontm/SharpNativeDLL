@@ -5,7 +5,7 @@ using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
-using static System.Runtime.InteropServices.JavaScript.JSType;
+using SharpNativeDLL.Helpers;
 
 namespace SharpNativeDLL
 {
@@ -59,9 +59,7 @@ namespace SharpNativeDLL
                 }
             }
 
-            Console.WriteLine($"[CurrentProcessId] {string.Format("0x{0:X}", CurrentProcessId)}");
-
-            IntPtr mainHandle = WindowAPI.OpenProcess(PROCESS_ALL_ACCESS, false, CurrentProcessId);
+            nint mainHandle = WindowAPI.FindWindow("notepad", null);
 
             Console.WriteLine($"[mainHandle] {string.Format("0x{0:X}", mainHandle)}");
 

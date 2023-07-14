@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
-namespace SharpNativeDLL
+namespace SharpNativeDLL.Helpers
 {
     public static class MemoryManager
     {
@@ -33,7 +33,7 @@ namespace SharpNativeDLL
             byte[] buffer = new byte[255];
 
             WindowAPI.ReadProcessMemory(hProcess, lpBaseAddress, buffer, buffer.Length, ref bytesRead);
-            return System.Text.UTF8Encoding.UTF8.GetString(buffer);
+            return Encoding.UTF8.GetString(buffer);
         }
     }
 }
