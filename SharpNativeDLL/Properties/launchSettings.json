@@ -1,0 +1,16 @@
+{
+  "profiles": {
+    "Build x64 (Default)": {
+      "commandName": "Executable",
+      "executablePath": "cmd.exe",
+      "commandLineArgs": "/c dotnet publish -r win-x64 -c Release SharpNativeDLL",
+      "workingDirectory": "..\\"
+    },
+    "Build x86": {
+      "commandName": "Executable",
+      "executablePath": "cmd.exe",
+      "commandLineArgs": "/c dotnet publish -r win-x86 -c Release SharpNativeDLL",
+      "workingDirectory": "..\\"
+    }
+  }
+}
