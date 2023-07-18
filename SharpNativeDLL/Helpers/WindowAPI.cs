@@ -11,6 +11,9 @@ namespace SharpNativeDLL.Helpers
 {
     public static class WindowAPI
     {
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
+
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         public static extern void PostQuitMessage(int nExitCode);
 

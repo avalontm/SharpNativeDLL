@@ -77,7 +77,7 @@ namespace SharpNativeDLL
         }
 
 
-        static void onMain()
+        static async void onMain()
         {
             int mainHandle = (int)WindowAPI.FindWindow("notepad", null);
 
@@ -164,9 +164,24 @@ namespace SharpNativeDLL
                 Console.WriteLine($"[layWnd] {layWnd.ToHex()}");
 
                 // Mostrar la ventana
-                //WindowAPI.SetLayeredWindowAttributes(layWnd, 0, RGB(255, 0, 0), LWA_COLORKEY);
+                WindowAPI.SetLayeredWindowAttributes(layWnd, 0, RGB(255, 0, 0), LWA_COLORKEY);
                 WindowAPI.ShowWindow(layWnd, SW_SHOW);
                 WindowAPI.UpdateWindow(layWnd);
+            }
+
+            while (true)
+            {
+                if (WindowAPI.GetWindowRect(mainHandle, out topWndRect))
+                {
+                    X = topWndRect.Left;
+                    Y = topWndRect.Top;
+                    Width = topWndRect.Right - topWndRect.Left;
+                    Height = topWndRect.Bottom - topWndRect.Top;
+
+                    WindowAPI.MoveWindow(layWnd, X, Y, Width, Height, true); 
+                }
+
+                await Task.Delay(1);
             }
         }
 
