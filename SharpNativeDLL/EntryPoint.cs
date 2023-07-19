@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using SharpNativeDLL.Helpers;
+using static SharpNativeDLL.Helpers.D3D9Interop;
 using static SharpNativeDLL.Helpers.Structs;
 
 namespace SharpNativeDLL
@@ -54,7 +55,8 @@ namespace SharpNativeDLL
         static int X = 0;
         static int Y = 0;
         static int Width = 0; 
-        static int Height = 0; 
+        static int Height = 0;
+        static IntPtr line = IntPtr.Zero;
 
         [UnmanagedCallersOnly(EntryPoint = "DllMain", CallConvs = new[] { typeof(CallConvStdcall) })]
         public static bool DllMain(IntPtr hModule, uint nReason, IntPtr lpReserved)
@@ -171,6 +173,11 @@ namespace SharpNativeDLL
                 WindowAPI.UpdateWindow(layWnd);
             }
 
+            //OPENGL
+            InitializeOpenGL();
+
+            Console.WriteLine("[LOOP]");
+
             while (true)
             {
                 if (WindowAPI.GetWindowRect(mainHandle, out topWndRect))
@@ -180,11 +187,63 @@ namespace SharpNativeDLL
                     Width = topWndRect.Right - topWndRect.Left;
                     Height = topWndRect.Bottom - topWndRect.Top;
 
-                    WindowAPI.MoveWindow(layWnd, X, Y, Width, Height, true); 
+                    WindowAPI.MoveWindow(layWnd, X, Y, Width, Height, true);
                 }
 
                 await Task.Delay(1);
             }
+        }
+
+        static IntPtr hdc = IntPtr.Zero;
+        static IntPtr hglrc = IntPtr.Zero;
+
+        static void InitializeOpenGL()
+        {
+            string opengl32 = @"C:\\WINDOWS\\SYSTEM32\\OPENGL32.DLL";
+
+            if (OpenGL.LoadLibrary(opengl32) == IntPtr.Zero)
+            {
+                Console.WriteLine("Error al cargar la libreria OpenGL.");
+                return;
+            }
+
+            hdc = OpenGL.GetDC(layWnd);
+
+            if (hdc == IntPtr.Zero)
+            {
+                Console.WriteLine("Error al crear la instancia OpenGL.");
+                return;
+            }
+
+            hglrc = OpenGL.wglCreateContext(hdc);
+
+            if (hglrc == IntPtr.Zero)
+            {
+                Console.WriteLine("Error al crear el contexto OpenGL.");
+                return;
+            }
+
+            if (!OpenGL.wglMakeCurrent(hdc, hglrc))
+            {
+                Console.WriteLine("Error al establecer el contexto OpenGL.");
+                return;
+            }
+
+            GLClear();
+        }
+
+        static  void GLClear()
+        {
+            OpenGL.glClearColor(0.392f, 0.584f, 0.929f, 1.0f); // Color.CornflowerBlue en formato RGB (0.392, 0.584, 0.929)
+            OpenGL.glClear(OpenGL.GL_COLOR_BUFFER_BIT);
+        }
+
+        static void SwapBuffers()
+        {
+
+            hdc = OpenGL.GetDC(layWnd);
+            OpenGL.wglSwapBuffers(hdc);
+            OpenGL.ReleaseDC(layWnd, hdc);
         }
 
         static IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
@@ -204,5 +263,7 @@ namespace SharpNativeDLL
 
             return (byte)Color.FromArgb(255, r, g, b).ToArgb();
         }
+
+       
     }
 }
