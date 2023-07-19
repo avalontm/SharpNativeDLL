@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using SharpNativeDLL.Helpers;
+using static SharpNativeDLL.Helpers.D3D9Interop;
 using static SharpNativeDLL.Helpers.Structs;
 
 namespace SharpNativeDLL
@@ -52,7 +53,8 @@ namespace SharpNativeDLL
         static int X = 0;
         static int Y = 0;
         static int Width = 0; 
-        static int Height = 0; 
+        static int Height = 0;
+        static IntPtr line = IntPtr.Zero;
 
         [UnmanagedCallersOnly(EntryPoint = "DllMain", CallConvs = new[] { typeof(CallConvStdcall) })]
         public static bool DllMain(IntPtr hModule, uint nReason, IntPtr lpReserved)
@@ -169,6 +171,37 @@ namespace SharpNativeDLL
                 WindowAPI.UpdateWindow(layWnd);
             }
 
+            //DirectX
+
+            DEVICE = Direct3DCreate9(D3D_SDK_VERSION);
+
+            if (DEVICE == IntPtr.Zero)
+            {
+                Console.WriteLine("Error al crear la instancia de Direct3D.");
+                return;
+            }
+
+            Console.WriteLine($"[Direct3D] {DEVICE.ToHex()}");
+
+            /*
+            // Crea una fuente para renderizar texto
+            int result = D3DXCreateFont(DEVICE, FONT_HEIGHT, 0, 400, 1, false, 0, 0, 0, 0, "Arial", out FONT);
+
+            if (result != 0 || FONT == IntPtr.Zero)
+            {
+                Console.WriteLine("Error al crear el font");
+                return;
+            }
+            */
+
+            int result = D3DXCreateLine(DEVICE, out line);
+
+            if (result != 0)
+            {
+                throw new Exception("Failed to create D3DX line.");
+            }
+            Console.WriteLine("[LOOP]");
+
             while (true)
             {
                 if (WindowAPI.GetWindowRect(mainHandle, out topWndRect))
@@ -178,7 +211,8 @@ namespace SharpNativeDLL
                     Width = topWndRect.Right - topWndRect.Left;
                     Height = topWndRect.Bottom - topWndRect.Top;
 
-                    WindowAPI.MoveWindow(layWnd, X, Y, Width, Height, true); 
+                    WindowAPI.MoveWindow(layWnd, X, Y, Width, Height, true);
+                    Render();
                 }
 
                 await Task.Delay(1);
@@ -201,6 +235,34 @@ namespace SharpNativeDLL
         {
 
             return (byte)Color.FromArgb(255, r, g, b).ToArgb();
+        }
+
+        static void Render()
+        {
+            // Limpiar pantalla, dibujar geometría, etc.
+
+            // Renderizar texto
+            string text = "¡Hola, mundo!";
+            RECT rect = new RECT(20, 20, 0, 0); // Coordenadas y tamaño del rectángulo para el texto
+
+            // D3DXFont_DrawText(FONT, text, -1, ref rect, 0, 0xFFFFFFFF);
+            D3DXVECTOR2[] vertexList = new D3DXVECTOR2[2];
+            vertexList[0].x = 0;
+            vertexList[0].y = 1;
+            vertexList[1].x = 10;
+            vertexList[1].y = 20;
+
+            Color color = Color.Red;
+
+            // Convert the color to a D3DCOLOR value (ARGB format).
+            uint d3dColor = (uint)((color.A << 24) | (color.R << 16) | (color.G << 8) | color.B);
+
+            // Draw the line
+            int result = D3DXLineDraw(line, ref vertexList[0], 2, d3dColor);
+            if (result != 0)
+            {
+                throw new Exception("Failed to draw D3DX line.");
+            }
         }
     }
 }
