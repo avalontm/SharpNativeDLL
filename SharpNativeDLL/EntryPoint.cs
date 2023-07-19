@@ -32,6 +32,8 @@ namespace SharpNativeDLL
 
         const int CS_HREDRAW = 0x0001;
         const int CS_VREDRAW = 0x0002;
+        const int CS_OWNDC = 0x0020;
+
         const int CS_COMBINED = 0x0003;
         const int WS_EX_TOPMOST = 0x00000008;
         const int WS_EX_LAYERED = 0x080000;
@@ -115,7 +117,7 @@ namespace SharpNativeDLL
             WNDCLASSEX wndClassEx = new WNDCLASSEX
             {
                 cbSize = Marshal.SizeOf(typeof(WNDCLASSEX)),
-                style = CS_HREDRAW | CS_VREDRAW,
+                style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC,
                 lpfnWndProc = WndProc,
                 hInstance = Marshal.GetHINSTANCE(typeof(EntryPoint).Module),
                 hCursor = WindowAPI.LoadCursor(IntPtr.Zero, IDC_ARROW),
