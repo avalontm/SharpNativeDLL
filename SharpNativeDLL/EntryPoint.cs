@@ -171,35 +171,9 @@ namespace SharpNativeDLL
                 WindowAPI.UpdateWindow(layWnd);
             }
 
-            //DirectX
+            //OPENGL
+            InitializeOpenGL();
 
-            DEVICE = Direct3DCreate9(D3D_SDK_VERSION);
-
-            if (DEVICE == IntPtr.Zero)
-            {
-                Console.WriteLine("Error al crear la instancia de Direct3D.");
-                return;
-            }
-
-            Console.WriteLine($"[Direct3D] {DEVICE.ToHex()}");
-
-            /*
-            // Crea una fuente para renderizar texto
-            int result = D3DXCreateFont(DEVICE, FONT_HEIGHT, 0, 400, 1, false, 0, 0, 0, 0, "Arial", out FONT);
-
-            if (result != 0 || FONT == IntPtr.Zero)
-            {
-                Console.WriteLine("Error al crear el font");
-                return;
-            }
-            */
-
-            int result = D3DXCreateLine(DEVICE, out line);
-
-            if (result != 0)
-            {
-                throw new Exception("Failed to create D3DX line.");
-            }
             Console.WriteLine("[LOOP]");
 
             while (true)
@@ -212,11 +186,62 @@ namespace SharpNativeDLL
                     Height = topWndRect.Bottom - topWndRect.Top;
 
                     WindowAPI.MoveWindow(layWnd, X, Y, Width, Height, true);
-                    Render();
                 }
 
                 await Task.Delay(1);
             }
+        }
+
+        static IntPtr hdc = IntPtr.Zero;
+        static IntPtr hglrc = IntPtr.Zero;
+
+        static void InitializeOpenGL()
+        {
+            string opengl32 = @"C:\\WINDOWS\\SYSTEM32\\OPENGL32.DLL";
+
+            if (OpenGL.LoadLibrary(opengl32) == IntPtr.Zero)
+            {
+                Console.WriteLine("Error al cargar la libreria OpenGL.");
+                return;
+            }
+
+            hdc = OpenGL.GetDC(layWnd);
+
+            if (hdc == IntPtr.Zero)
+            {
+                Console.WriteLine("Error al crear la instancia OpenGL.");
+                return;
+            }
+
+            hglrc = OpenGL.wglCreateContext(hdc);
+
+            if (hglrc == IntPtr.Zero)
+            {
+                Console.WriteLine("Error al crear el contexto OpenGL.");
+                return;
+            }
+
+            if (!OpenGL.wglMakeCurrent(hdc, hglrc))
+            {
+                Console.WriteLine("Error al establecer el contexto OpenGL.");
+                return;
+            }
+
+            GLClear();
+        }
+
+        static  void GLClear()
+        {
+            OpenGL.glClearColor(0.392f, 0.584f, 0.929f, 1.0f); // Color.CornflowerBlue en formato RGB (0.392, 0.584, 0.929)
+            OpenGL.glClear(OpenGL.GL_COLOR_BUFFER_BIT);
+        }
+
+        static void SwapBuffers()
+        {
+
+            hdc = OpenGL.GetDC(layWnd);
+            OpenGL.wglSwapBuffers(hdc);
+            OpenGL.ReleaseDC(layWnd, hdc);
         }
 
         static IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
@@ -237,32 +262,6 @@ namespace SharpNativeDLL
             return (byte)Color.FromArgb(255, r, g, b).ToArgb();
         }
 
-        static void Render()
-        {
-            // Limpiar pantalla, dibujar geometría, etc.
-
-            // Renderizar texto
-            string text = "¡Hola, mundo!";
-            RECT rect = new RECT(20, 20, 0, 0); // Coordenadas y tamaño del rectángulo para el texto
-
-            // D3DXFont_DrawText(FONT, text, -1, ref rect, 0, 0xFFFFFFFF);
-            D3DXVECTOR2[] vertexList = new D3DXVECTOR2[2];
-            vertexList[0].x = 0;
-            vertexList[0].y = 1;
-            vertexList[1].x = 10;
-            vertexList[1].y = 20;
-
-            Color color = Color.Red;
-
-            // Convert the color to a D3DCOLOR value (ARGB format).
-            uint d3dColor = (uint)((color.A << 24) | (color.R << 16) | (color.G << 8) | color.B);
-
-            // Draw the line
-            int result = D3DXLineDraw(line, ref vertexList[0], 2, d3dColor);
-            if (result != 0)
-            {
-                throw new Exception("Failed to draw D3DX line.");
-            }
-        }
+       
     }
 }
