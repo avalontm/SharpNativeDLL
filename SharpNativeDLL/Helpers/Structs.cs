@@ -47,5 +47,54 @@ namespace SharpNativeDLL.Helpers
             public string lpszClassName;
             public IntPtr hIconSm;
         }
+
+        // Estructura MSG utilizada por PeekMessage
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MSG
+        {
+            public IntPtr hWnd;
+            public uint message;
+            public IntPtr wParam;
+            public IntPtr lParam;
+            public uint time;
+            public Point pt;
+        }
+
+        // Definición de la estructura Point
+        [StructLayout(LayoutKind.Sequential)]
+        public struct Point
+        {
+            public int X;
+            public int Y;
+        }
+
+        public struct Rectangle
+        {
+            private int x; // Do not rename (binary serialization)
+            private int y; // Do not rename (binary serialization)
+            private int width; // Do not rename (binary serialization)
+            private int height; // Do not rename (binary serialization)
+
+            public Rectangle(int x, int y, int width, int height)
+            {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+            }
+        }
+
+        // Estructura WINDOWPLACEMENT para obtener el estado de la ventana
+        [Serializable]
+        [StructLayout(LayoutKind.Sequential)]
+        public struct WINDOWPLACEMENT
+        {
+            public int length;
+            public int flags;
+            public int showCmd;
+            public System.Drawing.Point ptMinPosition;
+            public System.Drawing.Point ptMaxPosition;
+            public System.Drawing.Rectangle rcNormalPosition;
+        }
     }
 }

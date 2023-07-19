@@ -9,8 +9,18 @@ using static SharpNativeDLL.Helpers.Structs;
 
 namespace SharpNativeDLL.Helpers
 {
-    public static class WindowAPI
+    public static class WinInterop
     {
+        // Importación de la función PeekMessage desde user32.dll mediante P/Invoke
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool PeekMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax, uint wRemoveMsg);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
+
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
 
@@ -124,5 +134,31 @@ namespace SharpNativeDLL.Helpers
 
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern IntPtr LoadLibrary(string lpFileName);
+
+        // Importación de la función GetMessage desde user32.dll mediante P/Invoke
+        [DllImport("user32.dll")]
+        public static extern bool GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+        // Importación de la función TranslateMessage desde user32.dll mediante P/Invoke
+        [DllImport("user32.dll")]
+        public static extern bool TranslateMessage(ref MSG lpMsg);
+
+        // Importación de la función DispatchMessage desde user32.dll mediante P/Invoke
+        [DllImport("user32.dll")]
+        public static extern bool DispatchMessage(ref MSG lpMsg);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern int SetWindowLong(IntPtr hWnd, int nIndex, uint dwNewLong);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern uint GetWindowLong(IntPtr hWnd, int nIndex);
+
+        // Importar la función GetWindowPlacement
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
+
     }
 }

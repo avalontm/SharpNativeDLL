@@ -14,7 +14,7 @@ namespace SharpNativeDLL.Helpers
             int bytesRead = 0;
             byte[] buffer = new byte[2];
 
-            WindowAPI.ReadProcessMemory(hProcess, lpBaseAddress, buffer, buffer.Length, ref bytesRead);
+            WinInterop.ReadProcessMemory(hProcess, lpBaseAddress, buffer, buffer.Length, ref bytesRead);
             return BitConverter.ToInt16(buffer, 0);
         }
 
@@ -23,7 +23,7 @@ namespace SharpNativeDLL.Helpers
             int bytesRead = 0;
             byte[] buffer = new byte[4];
 
-            WindowAPI.ReadProcessMemory(hProcess, lpBaseAddress, buffer, buffer.Length, ref bytesRead);
+            WinInterop.ReadProcessMemory(hProcess, lpBaseAddress, buffer, buffer.Length, ref bytesRead);
             return BitConverter.ToInt32(buffer, 0);
         }
 
@@ -32,7 +32,7 @@ namespace SharpNativeDLL.Helpers
             int bytesRead = 0;
             byte[] buffer = new byte[255];
 
-            WindowAPI.ReadProcessMemory(hProcess, lpBaseAddress, buffer, buffer.Length, ref bytesRead);
+            WinInterop.ReadProcessMemory(hProcess, lpBaseAddress, buffer, buffer.Length, ref bytesRead);
             return Encoding.UTF8.GetString(buffer);
         }
     }

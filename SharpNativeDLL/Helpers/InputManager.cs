@@ -19,7 +19,7 @@ namespace SharpNativeDLL.Helpers
 
         public static void SendString(IntPtr handle, string message)
         {
-            WindowAPI.SendMessage(handle, WM_SETTEXT, 0, message);
+            WinInterop.SendMessage(handle, WM_SETTEXT, 0, message);
         }
     }
 }

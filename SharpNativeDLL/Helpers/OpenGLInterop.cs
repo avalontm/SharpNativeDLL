@@ -4,10 +4,11 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
+using static SharpNativeDLL.Helpers.Structs;
 
 namespace SharpNativeDLL.Helpers
 {
-    public static class OpenGL
+    public static class OpenGLInterop
     {
         #region The OpenGL constant definitions.
         [Flags()]
@@ -1805,23 +1806,48 @@ namespace SharpNativeDLL.Helpers
         [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Ansi)]
         public static extern IntPtr LoadLibrary([MarshalAs(UnmanagedType.LPStr)] string lpFileName);
 
-        public const uint GL_COLOR_BUFFER_BIT = 0x00004000;
-        #endregion
-    }
+        // Importación de funciones de la API de Windows (GDI32.dll)
+        [DllImport("gdi32.dll")]
+        public static extern int ChoosePixelFormat(IntPtr hdc, ref PIXELFORMATDESCRIPTOR ppfd);
 
-    public struct Rectangle
-    {
-        private int x; // Do not rename (binary serialization)
-        private int y; // Do not rename (binary serialization)
-        private int width; // Do not rename (binary serialization)
-        private int height; // Do not rename (binary serialization)
+        [DllImport("gdi32.dll")]
+        public static extern bool SetPixelFormat(IntPtr hdc, int format, ref PIXELFORMATDESCRIPTOR ppfd);
 
-        public Rectangle(int x, int y, int width, int height)
+        // Estructura PIXELFORMATDESCRIPTOR
+        [StructLayout(LayoutKind.Sequential)]
+        public struct PIXELFORMATDESCRIPTOR
         {
-            this.x = x;
-            this.y = y;
-            this.width = width;
-            this.height = height;
+            public ushort nSize;
+            public ushort nVersion;
+            public uint dwFlags;
+            public byte iPixelType;
+            public byte cColorBits;
+            public byte cRedBits;
+            public byte cRedShift;
+            public byte cGreenBits;
+            public byte cGreenShift;
+            public byte cBlueBits;
+            public byte cBlueShift;
+            public byte cAlphaBits;
+            public byte cAlphaShift;
+            public byte cAccumBits;
+            public byte cAccumRedBits;
+            public byte cAccumGreenBits;
+            public byte cAccumBlueBits;
+            public byte cAccumAlphaBits;
+            public byte cDepthBits;
+            public byte cStencilBits;
+            public byte cAuxBuffers;
+            public byte iLayerType;
+            public byte bReserved;
+            public uint dwLayerMask;
+            public uint dwVisibleMask;
+            public uint dwDamageMask;
         }
+
+        public const uint GL_COLOR_BUFFER_BIT = 0x00004000;
+        public const uint GL_DEPTH_BUFFER_BIT = 0x00000100;
+        public const uint GL_TRIANGLES = 0x0004;
+        #endregion
     }
 }
