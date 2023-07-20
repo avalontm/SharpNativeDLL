@@ -1,28 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net7.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-	<PublishAot>true</PublishAot>
-	<Platforms>AnyCPU;x64</Platforms>
-	<AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+	  <TargetFramework>net7.0</TargetFramework>
+	  <ImplicitUsings>enable</ImplicitUsings>
+	  <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+	  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+	  <IncludeSymbolsInSingleFile>true</IncludeSymbolsInSingleFile>
+	  <PublishAot>true</PublishAot>
+	  <StripSymbols>true</StripSymbols>
   </PropertyGroup>
-
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-	<PlatformTarget>AnyCPU</PlatformTarget>
-
-	<DebugType>none</DebugType>
-	<DebugSymbols>false</DebugSymbols>
-
-	<Optimize>true</Optimize>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <DebugType>none</DebugType>
-    <DebugSymbols>false</DebugSymbols>
-    <Optimize>true</Optimize>
-  </PropertyGroup>
-
 </Project>

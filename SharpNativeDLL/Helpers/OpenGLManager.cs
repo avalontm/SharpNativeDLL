@@ -87,9 +87,10 @@ namespace SharpNativeDLL.Helpers
         // Método para dibujar un triángulo utilizando OpenGL
         static void DrawTriangle()
         {
-            glBegin(OpenGLInterop.GL_TRIANGLES);
+            glBegin((int)BeginMode.GL_TRIANGLES);
             glColor3f(1.0f, 0.0f, 0.0f); // Color rojo
             glVertex2f(0.0f, 0.5f);
+            
             glColor3f(0.0f, 1.0f, 0.0f); // Color verde
             glVertex2f(-0.5f, -0.5f);
             glColor3f(0.0f, 0.0f, 1.0f); // Color azul
