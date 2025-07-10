@@ -1,6 +1,8 @@
 ﻿using AvalonInjectLib;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using static AvalonInjectLib.Structs;
+using static AvalonInjectLib.UIFramework;
 
 namespace SharpNativeDLL
 {
@@ -107,7 +109,7 @@ namespace SharpNativeDLL
                 return;
             }
 
-            IntPtr moduleBase = WinInterop.GetModuleBase(processId, "ac_client.exe");
+            IntPtr moduleBase = WinInterop.GetModuleBaseEx(processId, "ac_client.exe");
 
             Console.WriteLine($"Proceso encontrado - PID: {processId:X8}");
             Console.WriteLine($"Modulo Base - moduleBase: {moduleBase:X8}");
@@ -116,6 +118,10 @@ namespace SharpNativeDLL
 
             Console.WriteLine($"PLAYER_BASE: {PLAYER_BASE:X8}");
 
+            // Para OpenGL (en tu hook de wglSwapBuffers)
+            Renderer.CurrentAPI = Renderer.GraphicsAPI.OpenGL;
+            Renderer.InitializeGraphics(processId);
+            MenuSystem.Initialize();
         }
 
         private static void MainLoop()
@@ -150,6 +156,7 @@ namespace SharpNativeDLL
                 }
 
                 WinInterop.Sleep(50);
+                
             }
         }
 
@@ -167,7 +174,8 @@ namespace SharpNativeDLL
                 // Console.WriteLine($"Nombre: {name}");
                 Console.WriteLine($"Vida: {health}");
                 Console.WriteLine($"Balas: {ammount}");
-                //Console.WriteLine($"Experiencia: {exp}\n");
+                Console.WriteLine($"OpenGL Hook: {(OpenGLHook.Initialized ? "✓ Activo" : "✗ Inactivo")}");
+
             }
             catch (Exception ex)
             {

@@ -990,6 +990,16 @@ namespace AvalonInjectLib
         }
         #endregion
         #region The OpenGL DLL Functions (Exactly the same naming).
+        [DllImport("opengl32.dll", EntryPoint = "wglGetCurrentContext")]
+        public static extern IntPtr wglGetCurrentContext();
+
+        [DllImport("opengl32.dll", EntryPoint = "wglGetCurrentDC")]
+        public static extern IntPtr wglGetCurrentDC();
+
+        [DllImport("opengl32.dll", EntryPoint = "wglShareLists")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool wglShareLists(IntPtr hglrc1, IntPtr hglrc2);
+
         [DllImport("opengl32.dll", CallingConvention = CallingConvention.Winapi, SetLastError = true, CharSet = CharSet.Ansi)]
         public static extern IntPtr wglCreateContext(IntPtr hdc);
 
@@ -1843,6 +1853,25 @@ namespace AvalonInjectLib
         public const uint GL_COLOR_BUFFER_BIT = 0x00004000;
         public const uint GL_DEPTH_BUFFER_BIT = 0x00000100;
         public const uint GL_TRIANGLES = 0x0004;
+
+        public static bool MakeContextCurrent(IntPtr hdc, IntPtr hglrc)
+        {
+            return wglMakeCurrent(hdc, hglrc);
+        }
+
+        public static IntPtr CreateSharedContext(IntPtr hdc, IntPtr shareContext)
+        {
+            IntPtr newContext = wglCreateContext(hdc);
+            if (newContext != IntPtr.Zero && shareContext != IntPtr.Zero)
+            {
+                if (!wglShareLists(shareContext, newContext))
+                {
+                    wglDeleteContext(newContext);
+                    return IntPtr.Zero;
+                }
+            }
+            return newContext;
+        }
         #endregion
     }
 }

@@ -12,7 +12,7 @@
 
 		<!-- Compatibilidad con bibliotecas nativas -->
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-
+		<IlcGenerateUnmanagedEntryPoints>true</IlcGenerateUnmanagedEntryPoints>
 		<!-- Optimizaciones -->
 		<StripSymbols>true</StripSymbols>
 		<Charset>UTF-8</Charset>

@@ -7,7 +7,16 @@ using static AvalonInjectLib.Structs;
 namespace AvalonInjectLib
 {
     public static unsafe class WinInterop
-    {
+    {        
+        // ================= CONSTANTES =================
+        public const uint TH32CS_SNAPMODULE = 0x00000008;
+        public const uint TH32CS_SNAPMODULE32 = 0x00000010;
+        public const uint TH32CS_SNAPPROCESS = 0x00000002;
+        public const IntPtr INVALID_HANDLE_VALUE = (IntPtr)(-1);
+        public const ushort IMAGE_DOS_SIGNATURE = 0x5A4D;
+        public const uint IMAGE_NT_SIGNATURE = 0x00004550;
+        public const int IMAGE_DIRECTORY_ENTRY_EXPORT = 0;
+
         // Constants for process access rights (complete set)
         public const int PROCESS_CREATE_THREAD = 0x0002;
         public const int PROCESS_CREATE_PROCESS = 0x0080;
@@ -26,24 +35,26 @@ namespace AvalonInjectLib
         public const uint PAGE_EXECUTE_READWRITE = 0x40;
         public const uint MEM_COMMIT = 0x1000;
         public const uint STILL_ACTIVE = 259;
+        public const uint MEM_RESERVE = 0x00002000;
 
         public const int LIST_MODULES_ALL = 0x03;
-        public const uint TH32CS_SNAPPROCESS = 0x00000002;
-        public const uint TH32CS_SNAPMODULE = 0x00000008;
-        public const uint TH32CS_SNAPMODULE32 = 0x00000010;
 
-        // Estructuras esenciales
-        [StructLayout(LayoutKind.Sequential)]
-        public struct MEMORY_BASIC_INFORMATION
-        {
-            public IntPtr BaseAddress;
-            public IntPtr AllocationBase;
-            public uint AllocationProtect;
-            public IntPtr RegionSize;
-            public uint State;
-            public uint Protect;
-            public uint Type;
-        }
+        public const uint GW_OWNER = 4;
+        public const int PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+    
+        /* CONSTANTES PARA OVERLAY */
+        public const int GWL_EXSTYLE = -20;
+        public const int GWL_STYLE = -16;
+        public const int WS_EX_LAYERED = 0x00080000;
+        public const int WS_EX_TRANSPARENT = 0x00000020;
+        public const int WS_CAPTION = 0x00C00000;
+        public const int WS_THICKFRAME = 0x00040000;
+        public const int LWA_COLORKEY = 0x00000001;
+        public const int SW_SHOW = 5;
+        public const int HWND_TOPMOST = -1;
+        public const int HWND_BOTTOM = 1;
+
 
         [DllImport("kernel32.dll")]
         public static extern bool SetConsoleOutputCP(uint wCodePageID);
@@ -64,13 +75,49 @@ namespace AvalonInjectLib
              [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle,
              uint dwProcessId);
 
-        [DllImport("kernel32", SetLastError = true)]
-        public static extern bool ReadProcessMemory(
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, ref IMAGE_DOS_HEADER lpBuffer, int dwSize, IntPtr lpNumberOfBytesRead);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, ref IMAGE_NT_HEADERS lpBuffer, int dwSize, IntPtr lpNumberOfBytesRead);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, ref IMAGE_EXPORT_DIRECTORY lpBuffer, int dwSize, IntPtr lpNumberOfBytesRead);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, ref uint lpBuffer, int dwSize, IntPtr lpNumberOfBytesRead);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, ref ushort lpBuffer, int dwSize, IntPtr lpNumberOfBytesRead);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, byte[] lpBuffer, int dwSize, IntPtr lpNumberOfBytesRead);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern IntPtr VirtualAllocEx(
             IntPtr hProcess,
-            IntPtr lpBaseAddress,
-            void* lpBuffer,
-            int nSize,
-            out int lpNumberOfBytesRead);
+            IntPtr lpAddress,
+            UIntPtr dwSize,
+            uint flAllocationType,
+            uint flProtect);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, IntPtr lpBuffer, int nSize, IntPtr lpNumberOfBytesRead);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool WriteProcessMemory(
+         IntPtr hProcess,
+         IntPtr lpBaseAddress,
+         byte[] lpBuffer,
+         UIntPtr nSize,
+         IntPtr lpNumberOfBytesWritten);
+
+        // En tu clase WinInterop o donde tengas tus imports
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool IsWow64Process(IntPtr hProcess, out bool wow64Process);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool FlushInstructionCache(IntPtr hProcess, IntPtr lpBaseAddress, UIntPtr dwSize);
 
         [DllImport("kernel32", SetLastError = true)]
         public static extern bool WriteProcessMemory(
@@ -170,23 +217,6 @@ namespace AvalonInjectLib
         [DllImport("kernel32")]
         public static extern void Sleep(uint dwMilliseconds);
 
-        internal static nint OpenProcess(object value, bool v, uint processId)
-        {
-            throw new NotImplementedException();
-        }
-
-
-        /* CONSTANTES PARA OVERLAY */
-        public const int GWL_EXSTYLE = -20;
-        public const int GWL_STYLE = -16;
-        public const int WS_EX_LAYERED = 0x00080000;
-        public const int WS_EX_TRANSPARENT = 0x00000020;
-        public const int WS_CAPTION = 0x00C00000;
-        public const int WS_THICKFRAME = 0x00040000;
-        public const int LWA_COLORKEY = 0x00000001;
-        public const int SW_SHOW = 5;
-        public const int HWND_TOPMOST = -1;
-        public const int HWND_BOTTOM = 1;
 
         /* API FUNCTIONS */
         [DllImport("user32.dll", SetLastError = true)]
@@ -302,72 +332,31 @@ namespace AvalonInjectLib
             IntPtr hSnapshot,
             ref PROCESSENTRY32W lppe);
 
-        // Estructuras Wide (Unicode)
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-        public struct MODULEENTRY32W
-        {
-            public uint dwSize;
-            public uint th32ModuleID;
-            public uint th32ProcessID;
-            public uint GlblcntUsage;
-            public uint ProccntUsage;
-            public IntPtr modBaseAddr;
-            public uint modBaseSize;
-            public IntPtr hModule;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
-            public string szModule;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
-            public string szExePath;
-        }
+        [DllImport("user32.dll")]
+        public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-        public struct PROCESSENTRY32W
-        {
-            public uint dwSize;
-            public uint cntUsage;
-            public uint th32ProcessID;
-            public IntPtr th32DefaultHeapID;
-            public uint th32ModuleID;
-            public uint cntThreads;
-            public uint th32ParentProcessID;
-            public int pcPriClassBase;
-            public uint dwFlags;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
-            public string szExeFile;
-        }
+        [DllImport("user32.dll")]
+        public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
 
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-        public struct PROCESSENTRY32
-        {
-            public uint dwSize;
-            public uint cntUsage;
-            public uint th32ProcessID;
-            public IntPtr th32DefaultHeapID;
-            public uint th32ModuleID;
-            public uint cntThreads;
-            public uint th32ParentProcessID;
-            public int pcPriClassBase;
-            public uint dwFlags;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
-            public string szExeFile;
-        }
+        [DllImport("user32.dll")]
+        public static extern bool IsWindowVisible(IntPtr hWnd);
 
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-        public struct MODULEENTRY32
-        {
-            public uint dwSize;
-            public uint th32ModuleID;
-            public uint th32ProcessID;
-            public uint GlblcntUsage;
-            public uint ProccntUsage;
-            public IntPtr modBaseAddr;
-            public uint modBaseSize;
-            public IntPtr hModule;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
-            public string szModule;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
-            public string szExePath;
-        }
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetParent(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+
+        public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool VirtualProtect(IntPtr lpAddress, UIntPtr dwSize, uint flNewProtect, out uint lpflOldProtect);
+
+        [DllImport("opengl32.dll", EntryPoint = "wglGetProcAddress")]
+        public static extern IntPtr wglGetProcAddress(string procName);
 
         /* HELPER METHODS */
         public static void SetWindowTransparency(IntPtr hWnd, uint colorKey)
@@ -437,107 +426,194 @@ namespace AvalonInjectLib
             }
         }
 
-        /// <summary>
-        /// Obtiene la dirección base de un módulo con mejor manejo de errores
-        /// </summary>
-        /// <param name="processId">ID del proceso</param>
-        /// <param name="moduleName">Nombre del módulo (con o sin .dll/.exe)</param>
-        /// <returns>Dirección base del módulo o IntPtr.Zero si no se encuentra</returns>
-        public static IntPtr GetModuleBase(uint processId, string moduleName)
+        // ================= FUNCIONES AUXILIARES PARA PROCESOS EXTERNOS =================
+        public static IntPtr GetModuleBaseEx(uint processId, string moduleName)
         {
-            if (processId == 0 || string.IsNullOrEmpty(moduleName))
-                return IntPtr.Zero;
-
-            // Intentar con TH32CS_SNAPMODULE32 también para procesos de 32 bits
-            IntPtr snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, processId);
-            if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1))
-            {
-                Debug.WriteLine($"Error al crear snapshot de módulos para PID {processId}: {GetLastError()}");
-                return IntPtr.Zero;
-            }
-
             try
             {
-                MODULEENTRY32W moduleEntry = new MODULEENTRY32W();
-                moduleEntry.dwSize = (uint)Marshal.SizeOf<MODULEENTRY32W>();
-
-                if (!Module32FirstW(snapshot, ref moduleEntry))
-                {
-                    Debug.WriteLine($"Error en Module32FirstW: {GetLastError()}");
+                // Crear snapshot de módulos del proceso
+                IntPtr hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, processId);
+                if (hSnapshot == INVALID_HANDLE_VALUE)
                     return IntPtr.Zero;
+
+                MODULEENTRY32 moduleEntry = new MODULEENTRY32();
+                moduleEntry.dwSize = (uint)Marshal.SizeOf(moduleEntry);
+
+                // Iterar a través de los módulos
+                if (Module32First(hSnapshot, ref moduleEntry))
+                {
+                    do
+                    {
+                        if (string.Equals(moduleEntry.szModule, moduleName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            CloseHandle(hSnapshot);
+                            return moduleEntry.modBaseAddr;
+                        }
+                    } while (Module32Next(hSnapshot, ref moduleEntry));
                 }
 
-                do
-                {
-                    // Comparar tanto el nombre del módulo como la ruta completa
-                    if ((!string.IsNullOrEmpty(moduleEntry.szModule) &&
-                         string.Equals(moduleEntry.szModule, moduleName, StringComparison.OrdinalIgnoreCase)) ||
-                        (!string.IsNullOrEmpty(moduleEntry.szExePath) &&
-                         string.Equals(System.IO.Path.GetFileName(moduleEntry.szExePath), moduleName, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        Debug.WriteLine($"Módulo encontrado: {moduleEntry.szModule} en {moduleEntry.modBaseAddr:X}");
-                        return moduleEntry.modBaseAddr;
-                    }
-                } while (Module32NextW(snapshot, ref moduleEntry));
-
-                Debug.WriteLine($"Módulo '{moduleName}' no encontrado en proceso {processId}");
+                CloseHandle(hSnapshot);
                 return IntPtr.Zero;
             }
-            finally
+            catch
             {
-                CloseHandle(snapshot);
+                return IntPtr.Zero;
             }
         }
 
-        /// <summary>
-        /// Método alternativo usando EnumProcessModulesEx (más confiable para algunos casos)
-        /// </summary>
-        /// <param name="processId">ID del proceso</param>
-        /// <param name="moduleName">Nombre del módulo</param>
-        /// <returns>Dirección base del módulo</returns>
-        public static IntPtr GetModuleBaseAlternative(uint processId, string moduleName)
+        public static IntPtr GetProcAddressEx(IntPtr hProcess, IntPtr hModule, string procName)
         {
-            IntPtr hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, processId);
-            if (hProcess == IntPtr.Zero)
-            {
-                Debug.WriteLine($"No se pudo abrir el proceso {processId}: {GetLastError()}");
-                return IntPtr.Zero;
-            }
+            const int IMAGE_DOS_SIGNATURE = 0x5A4D;      // "MZ"
+            const int IMAGE_NT_SIGNATURE = 0x00004550;   // "PE\0\0"
+            const int IMAGE_DIRECTORY_ENTRY_EXPORT = 0;  // Export Directory
 
             try
             {
-                const int maxModules = 1024;
-                IntPtr[] modules = new IntPtr[maxModules];
-
-                if (!EnumProcessModulesEx(hProcess, modules, (uint)(maxModules * IntPtr.Size), out uint bytesNeeded, LIST_MODULES_ALL))
-                {
-                    Debug.WriteLine($"Error en EnumProcessModulesEx: {GetLastError()}");
+                // Leer DOS header
+                IMAGE_DOS_HEADER dosHeader;
+                if (!ReadProcessMemory(hProcess, hModule, out dosHeader))
                     return IntPtr.Zero;
-                }
 
-                int moduleCount = (int)(bytesNeeded / IntPtr.Size);
+                if (dosHeader.e_magic != IMAGE_DOS_SIGNATURE)
+                    return IntPtr.Zero;
 
-                for (int i = 0; i < moduleCount; i++)
+                // Leer NT headers
+                IMAGE_NT_HEADERS ntHeaders;
+                IntPtr ntHeadersPtr = hModule + dosHeader.e_lfanew;
+                if (!ReadProcessMemory(hProcess, ntHeadersPtr, out ntHeaders))
+                    return IntPtr.Zero;
+
+                if (ntHeaders.Signature != IMAGE_NT_SIGNATURE)
+                    return IntPtr.Zero;
+
+                // Obtener directorio de exportación
+                var exportDir = ntHeaders.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+                if (exportDir.VirtualAddress == 0 || exportDir.Size == 0)
+                    return IntPtr.Zero;
+
+                // Leer tabla de exportación
+                IMAGE_EXPORT_DIRECTORY exportTable;
+                IntPtr exportTablePtr = hModule + (int)exportDir.VirtualAddress;
+                if (!ReadProcessMemory(hProcess, exportTablePtr, out exportTable))
+                    return IntPtr.Zero;
+
+                // Leer arrays de exportación
+                uint[] addressOfFunctions = new uint[exportTable.NumberOfFunctions];
+                uint[] addressOfNames = new uint[exportTable.NumberOfNames];
+                ushort[] addressOfNameOrdinals = new ushort[exportTable.NumberOfNames];
+
+                IntPtr functionsPtr = hModule + (int)exportTable.AddressOfFunctions;
+                IntPtr namesPtr = hModule + (int)exportTable.AddressOfNames;
+                IntPtr ordinalsPtr = hModule + (int)exportTable.AddressOfNameOrdinals;
+
+                if (!ReadProcessMemoryArray(hProcess, functionsPtr, addressOfFunctions))
+                    return IntPtr.Zero;
+
+                if (!ReadProcessMemoryArray(hProcess, namesPtr, addressOfNames))
+                    return IntPtr.Zero;
+
+                if (!ReadProcessMemoryArray(hProcess, ordinalsPtr, addressOfNameOrdinals))
+                    return IntPtr.Zero;
+
+                // Buscar la función por nombre
+                for (int i = 0; i < exportTable.NumberOfNames; i++)
                 {
-                    StringBuilder moduleNameBuilder = new StringBuilder(260);
-                    if (GetModuleFileNameExW(hProcess, modules[i], moduleNameBuilder, 260) > 0)
+                    string currentName;
+                    IntPtr namePtr = hModule + (int)addressOfNames[i];
+
+                    if (!ReadProcessMemoryString(hProcess, namePtr, out currentName))
+                        continue;
+
+                    if (string.Equals(currentName, procName, StringComparison.Ordinal))
                     {
-                        string currentModuleName = System.IO.Path.GetFileName(moduleNameBuilder.ToString());
-                        if (string.Equals(currentModuleName, moduleName, StringComparison.OrdinalIgnoreCase))
-                        {
-                            Debug.WriteLine($"Módulo encontrado (método alternativo): {currentModuleName} en {modules[i]:X}");
-                            return modules[i];
-                        }
+                        ushort ordinal = addressOfNameOrdinals[i];
+                        if (ordinal >= exportTable.NumberOfFunctions)
+                            continue;
+
+                        uint functionRva = addressOfFunctions[ordinal];
+                        return hModule + (int)functionRva;
                     }
                 }
 
-                Debug.WriteLine($"Módulo '{moduleName}' no encontrado (método alternativo)");
+                // Buscar por ordinal (si procName es un número)
+                if (ushort.TryParse(procName, out ushort ordinalValue))
+                {
+                    if (ordinalValue >= exportTable.Base &&
+                        ordinalValue < exportTable.Base + exportTable.NumberOfFunctions)
+                    {
+                        uint functionRva = addressOfFunctions[ordinalValue - exportTable.Base];
+                        return hModule + (int)functionRva;
+                    }
+                }
+
                 return IntPtr.Zero;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error en GetProcAddressEx: {ex.Message}");
+                return IntPtr.Zero;
+            }
+        }
+
+        // Métodos auxiliares para lectura de memoria
+        private static bool ReadProcessMemory<T>(IntPtr hProcess, IntPtr lpBaseAddress, out T structure) where T : struct
+        {
+            structure = default;
+            int size = Marshal.SizeOf<T>();
+            IntPtr buffer = Marshal.AllocHGlobal(size);
+
+            try
+            {
+                if (!ReadProcessMemory(hProcess, lpBaseAddress, buffer, size, IntPtr.Zero))
+                    return false;
+
+                structure = Marshal.PtrToStructure<T>(buffer);
+                return true;
             }
             finally
             {
-                CloseHandle(hProcess);
+                Marshal.FreeHGlobal(buffer);
             }
+        }
+
+        private static bool ReadProcessMemoryArray<T>(IntPtr hProcess, IntPtr lpBaseAddress, T[] array) where T : struct
+        {
+            int elementSize = Marshal.SizeOf<T>();
+            int totalSize = array.Length * elementSize;
+            IntPtr buffer = Marshal.AllocHGlobal(totalSize);
+
+            try
+            {
+                if (!ReadProcessMemory(hProcess, lpBaseAddress, buffer, totalSize, IntPtr.Zero))
+                    return false;
+
+                for (int i = 0; i < array.Length; i++)
+                {
+                    IntPtr elementPtr = buffer + (i * elementSize);
+                    array[i] = Marshal.PtrToStructure<T>(elementPtr);
+                }
+                return true;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+        }
+
+        private static bool ReadProcessMemoryString(IntPtr hProcess, IntPtr lpBaseAddress, out string value)
+        {
+            value = null;
+            const int bufferSize = 256;
+            byte[] buffer = new byte[bufferSize];
+
+            if (!ReadProcessMemory(hProcess, lpBaseAddress, buffer, bufferSize, IntPtr.Zero))
+                return false;
+
+            int length = Array.IndexOf(buffer, (byte)0);
+            if (length <= 0) return false;
+
+            value = Encoding.ASCII.GetString(buffer, 0, length);
+            return true;
         }
 
         /// <summary>
@@ -577,6 +653,56 @@ namespace AvalonInjectLib
             }
 
             return processes.ToArray();
+        }
+
+        public static IntPtr FindGameWindow(uint processId)
+        {
+            // Opción 1: Buscar por nombre de ventana si lo conoces
+            IntPtr gameWindow = FindWindow(null, "AssaultCube"); // Cambia por el título real
+            if (gameWindow != IntPtr.Zero)
+            {
+                uint windowProcessId;
+                GetWindowThreadProcessId(gameWindow, out windowProcessId);
+                if (windowProcessId == processId)
+                {
+                    return gameWindow;
+                }
+            }
+
+            // Opción 2: Enumerar todas las ventanas del proceso
+            gameWindow = IntPtr.Zero;
+            EnumWindows((hWnd, lParam) =>
+            {
+                uint windowProcessId;
+                GetWindowThreadProcessId(hWnd, out windowProcessId);
+
+                if (windowProcessId == processId)
+                {
+                    // Verificar si es una ventana visible y principal
+                    if (IsWindowVisible(hWnd) && GetParent(hWnd) == IntPtr.Zero)
+                    {
+                        // Obtener el texto de la ventana para verificar
+                        var windowText = new StringBuilder(256);
+                        GetWindowText(hWnd, windowText, windowText.Capacity);
+
+                        // Si la ventana tiene título o es la ventana principal
+                        if (windowText.Length > 0 || IsMainWindow(hWnd))
+                        {
+                            gameWindow = hWnd;
+                            return false; // Detener enumeración
+                        }
+                    }
+                }
+                return true; // Continuar enumeración
+            }, IntPtr.Zero);
+
+            return gameWindow;
+        }
+
+        private static bool IsMainWindow(IntPtr hWnd)
+        {
+            return GetWindow(hWnd, WinInterop.GW_OWNER) == IntPtr.Zero &&
+                   IsWindowVisible(hWnd);
         }
 
         /// <summary>
@@ -633,12 +759,6 @@ namespace AvalonInjectLib
             return new IntPtr(current);
         }
 
-        public static T ReadMemory<T>(IntPtr hProcess, IntPtr address) where T : unmanaged
-        {
-            T value;
-            ReadProcessMemory(hProcess, address, &value, sizeof(T), out _);
-            return value;
-        }
 
         public static void ExecuteRemoteFunction(IntPtr hProcess, IntPtr funcAddress, int parameter)
         {
@@ -654,5 +774,13 @@ namespace AvalonInjectLib
             if (threadHandle != IntPtr.Zero)
                 CloseHandle(threadHandle);
         }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool VirtualFreeEx(
+     IntPtr hProcess,          // Handle al proceso objetivo
+     IntPtr lpAddress,         // Dirección de memoria a liberar
+     UIntPtr dwSize,           // Tamaño de la región (0 para MEM_RELEASE)
+     uint dwFreeType           // Tipo de liberación (MEM_RELEASE = 0x8000)
+ );
     }
 }
