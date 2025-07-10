@@ -1,13 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using static SharpNativeDLL.Helpers.Structs;
+using static AvalonInjectLib.Structs;
 
-namespace SharpNativeDLL.Helpers
+namespace AvalonInjectLib
 {
     public static class OverlayManager
     {
@@ -28,7 +23,7 @@ namespace SharpNativeDLL.Helpers
         static int Height = 0;
         static IntPtr layWnd = IntPtr.Zero;
 
-        public static IntPtr CreateWindow(IntPtr mainHandle)
+        public static IntPtr CreateWindow(Type type, IntPtr mainHandle)
         {
             string className = "SharpNativeLayer1";
 
@@ -38,7 +33,7 @@ namespace SharpNativeDLL.Helpers
                 cbSize = Marshal.SizeOf(typeof(WNDCLASSEX)),
                 style = Const.CS_HREDRAW | Const.CS_VREDRAW | Const.CS_OWNDC,
                 lpfnWndProc = WndProc,
-                hInstance = Marshal.GetHINSTANCE(typeof(EntryPoint).Module),
+                hInstance = Marshal.GetHINSTANCE(type.Module),
                 lpszClassName = className
             };
 
@@ -67,7 +62,7 @@ namespace SharpNativeDLL.Helpers
                     Height,                 // Alto
                     IntPtr.Zero,            // Ventana padre (en este caso, no tiene)
                     IntPtr.Zero,            // Menú (en este caso, no tiene)
-                    Marshal.GetHINSTANCE(typeof(EntryPoint).Module), // Instancia de la aplicación
+                    Marshal.GetHINSTANCE(type.Module), // Instancia de la aplicación
                     IntPtr.Zero             // Parámetros adicionales
                 );
 
@@ -100,7 +95,7 @@ namespace SharpNativeDLL.Helpers
             // Establecer el estilo de ventana WS_EX_LAYERED y WS_EX_TRANSPARENT
             uint exStyle = (uint)WinInterop.GetWindowLong(layWnd, Const.GWL_EXSTYLE);
             exStyle |= Const.WS_EX_LAYERED | Const.WS_EX_TRANSPARENT;
-            WinInterop.SetWindowLong(layWnd, Const.GWL_EXSTYLE, exStyle & ~(uint)(Const.WS_CAPTION | Const.WS_THICKFRAME));
+            WinInterop.SetWindowLong(layWnd, Const.GWL_EXSTYLE, (int)exStyle & ~(int)(Const.WS_CAPTION | Const.WS_THICKFRAME));
 
         }
 

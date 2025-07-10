@@ -1,16 +1,18 @@
 {
   "profiles": {
-    "Build x64 (Default)": {
+    "AOT Build x64": {
       "commandName": "Executable",
-      "executablePath": "cmd.exe",
-      "commandLineArgs": "/c dotnet publish -r win-x64 -c Release SharpNativeDLL",
-      "workingDirectory": "..\\"
+      "executablePath": "dotnet",
+      "commandLineArgs": "build -t:PublishAOTx64 -v:normal",
+      "workingDirectory": "$(ProjectDir)",
+      "useShellExecute": false
     },
-    "Build x86": {
+    "AOT Build x86": {
       "commandName": "Executable",
-      "executablePath": "cmd.exe",
-      "commandLineArgs": "/c dotnet publish -r win-x86 -c Release SharpNativeDLL",
-      "workingDirectory": "..\\"
+      "executablePath": "dotnet",
+      "commandLineArgs": "build -t:PublishAOTx86 -v:normal",
+      "workingDirectory": "$(ProjectDir)",
+      "useShellExecute": false
     }
   }
 }

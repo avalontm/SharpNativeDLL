@@ -1,12 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
-using static SharpNativeDLL.Helpers.Structs;
+﻿using System.Runtime.InteropServices;
+using static AvalonInjectLib.Structs;
 
-namespace SharpNativeDLL.Helpers
+namespace AvalonInjectLib
 {
     public static class D3D9Interop
     {
@@ -46,7 +41,7 @@ namespace SharpNativeDLL.Helpers
         public static extern int Direct3D9CreateDevice(IntPtr direct3D, int adapter, int deviceType, IntPtr hFocusWindow, int behaviorFlags, ref D3DPRESENT_PARAMETERS presentationParameters, out IntPtr device);
 
         [DllImport(D3DX9Library, CallingConvention = CallingConvention.StdCall)]
-        public static extern int D3DXFont_DrawText(IntPtr font, string text, int count,  ref RECT rect, uint format, uint color);
+        public static extern int D3DXFont_DrawText(IntPtr font, string text, int count, ref RECT rect, uint format, uint color);
 
         [DllImport("d3dx9_43.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern int D3DXCreateLine(IntPtr device, out IntPtr line);
@@ -56,7 +51,7 @@ namespace SharpNativeDLL.Helpers
 
         [DllImport("d3dx9_43.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern int D3DXLineDraw(IntPtr line, ref D3DXVECTOR2 vertexList, int vertexCount, uint color);
-        
+
         [StructLayout(LayoutKind.Sequential)]
         public struct D3DPRESENT_PARAMETERS
         {

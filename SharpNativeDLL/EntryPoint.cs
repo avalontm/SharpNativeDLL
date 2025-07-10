@@ -1,104 +1,199 @@
-﻿using SharpNativeDLL.Helpers;
-using System.Drawing;
+﻿using AvalonInjectLib;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using static SharpNativeDLL.Helpers.OpenGLInterop;
-using static SharpNativeDLL.Helpers.Structs;
 
 namespace SharpNativeDLL
 {
-    public class EntryPoint
+    public unsafe class EntryPoint
     {
-        const uint DLL_PROCESS_DETACH = 0,
-                   DLL_PROCESS_ATTACH = 1,
-                   DLL_THREAD_ATTACH = 2,
-                   DLL_THREAD_DETACH = 3;
+        // Handles
+        public static IntPtr hProcess { private set; get; } = IntPtr.Zero;
+        public static uint processId { private set; get; } = 0;
 
+        // Direcciones del juego C (ejemplo)
+        static IntPtr PLAYER_BASE = IntPtr.Zero;
+        static readonly IntPtr HEALTH_OFFSET = (IntPtr)0xEC;
+        static readonly IntPtr AMMOUNT_OFFSET = (IntPtr)0x140;
+        static readonly IntPtr PACK_OFFSET = (IntPtr)0x11C;
+        static readonly IntPtr BOOM_OFFSET = (IntPtr)0x144;
+        static readonly IntPtr NAME_OFFSET = (IntPtr)0x205;
 
-        static IntPtr layWnd = IntPtr.Zero;
-        static IntPtr mainHandle = IntPtr.Zero;
+        static readonly IntPtr MOUSEX_OFFSET = (IntPtr)0x04;
+        static readonly IntPtr MOUSEY_OFFSET = (IntPtr)0x08;
+        static readonly IntPtr MOUSEZ_OFFSET = (IntPtr)0x0C;
+
+        static readonly IntPtr POSX_OFFSET = (IntPtr)0x28;
+        static readonly IntPtr POSY_OFFSET = (IntPtr)0x2C;
+        static readonly IntPtr POSZ_OFFSET = (IntPtr)0x30;
+
+        static readonly IntPtr CAMERAX_OFFSET = (IntPtr)0x34;
+        static readonly IntPtr CAMERAY_OFFSET = (IntPtr)0x38;
+
+        // Constantes
+        const uint DLL_PROCESS_ATTACH = 1;
 
         [UnmanagedCallersOnly(EntryPoint = "DllMain", CallConvs = new[] { typeof(CallConvStdcall) })]
-        public static bool DllMain(IntPtr hModule, uint nReason, IntPtr lpReserved)
+        public static bool DllMain(nint hModule, uint ul_reason_for_call, nint lpReserved)
         {
-            uint threadId;
-
-            switch (nReason)
+            if (ul_reason_for_call == DLL_PROCESS_ATTACH)
             {
-                case DLL_PROCESS_ATTACH:
-                    WinInterop.CreateThread(IntPtr.Zero, 0, new ThreadStart(onMain), IntPtr.Zero, 0, out threadId);
-                    break;
-                case DLL_PROCESS_DETACH:
-                    break;
-                case DLL_THREAD_ATTACH:
-                    break;
-                case DLL_THREAD_DETACH:
-                default:
-
-                    break;
+                WinInterop.DisableThreadLibraryCalls(hModule);
+                CreateInjectionThread();
             }
             return true;
         }
 
-
-        static async void onMain()
+        private static void CreateInjectionThread()
         {
-            mainHandle = (int)WinInterop.FindWindow("notepad", null);
+            nint threadHandle = WinInterop.CreateThread(
+                nint.Zero,
+                0,
+                InjectionThread,
+                nint.Zero,
+                0,
+                out _);
 
-            if (mainHandle == 0)
+            if (threadHandle != nint.Zero)
+                WinInterop.CloseHandle(threadHandle);
+        }
+
+        private static void InjectionThread()
+        {
+            try
             {
-                WinInterop.MessageBox(0, "No se encontro el proceso.", "Error", 0);
+                InitializeConsole();
+                FindGameProcess();
+                MainLoop();
+
+            }
+            catch (Exception ex)
+            {
+                WinDialog.ShowErrorDialog("Error crítico", ex.ToString());
+            }
+        }
+
+
+        private static void InitializeConsole()
+        {
+            // Establecer la codificación de salida a UTF-8 (65001)
+            WinInterop.SetConsoleOutputCP(65001);
+
+            //if (WinInterop.AttachConsole(-1))
+            WinInterop.AllocConsole();
+
+            Console.Title = "Game Hacking Tool";
+            Console.WriteLine("=== HERRAMIENTA DE HACKEAR JUEGO ===");
+            Console.WriteLine("Teclas:\n1 - Mostrar stats\n2 - Modificar vida\n3 - Modificar balas\n5 - Salir");
+        }
+
+        private static void FindGameProcess()
+        {
+            processId = WinInterop.FindProcessId("ac_client.exe");
+
+            if (processId == 0)
+            {
+                Console.WriteLine("Proceso del juego no encontrado");
                 return;
             }
 
-            if (!WinInterop.AttachConsole(mainHandle.ToInt32()))
+            Console.WriteLine($"processId: {processId}");
+
+            // 2. Obtener handle al proceso
+            hProcess = WinInterop.OpenProcess(WinInterop.PROCESS_ALL_ACCESS, false, processId);
+
+            if (hProcess == IntPtr.Zero)
             {
-                if (!WinInterop.AllocConsole())
-                {
-                    WinInterop.MessageBox(0, "No se pudo asignar una consola.", "Error", 0);
-                }
+                Console.WriteLine($"Error al abrir proceso (0x{WinInterop.GetLastError():X8})");
+                return;
             }
 
-            Console.WriteLine($"[mainHandle] {mainHandle.ToHex()}");
+            IntPtr moduleBase = WinInterop.GetModuleBase(processId, "ac_client.exe");
 
-            IntPtr notepadTextbox = WinInterop.FindWindowEx(mainHandle, IntPtr.Zero, "Edit", "");
+            Console.WriteLine($"Proceso encontrado - PID: {processId:X8}");
+            Console.WriteLine($"Modulo Base - moduleBase: {moduleBase:X8}");
 
-            Console.WriteLine($"[notepadTextbox] {notepadTextbox.ToHex()}");
+            PLAYER_BASE = MemoryManager.ResolvePointer(hProcess, moduleBase + 0x17E0A8, 0);
 
-            InputManager.SendString(notepadTextbox, "Hola mundo!");
-
-            //OVERLAY
-            layWnd = OverlayManager.CreateWindow(mainHandle);
-
-            //OPENGL
-            OpenGLManager.InitializeOpenGL(layWnd);
-
-            bool running = true;
-
-            //LOOP
-            while (running)
-            {
-                MSG msg;
-                while (WinInterop.PeekMessage(out msg, IntPtr.Zero, 0, 0, Const.PM_REMOVE))
-                {
-                    if (msg.message == Const.WM_QUIT)
-                    {
-                        running = false;
-                    }
-                    else
-                    {
-                        WinInterop.TranslateMessage(ref msg);
-                        WinInterop.DispatchMessage(ref msg);
-                    }
-
-                    OverlayManager.OnUpdate(mainHandle);
-                }
-
-                await Task.Delay(1);
-            }
-
+            Console.WriteLine($"PLAYER_BASE: {PLAYER_BASE:X8}");
 
         }
 
+        private static void MainLoop()
+        {
+            while (true)
+            {
+                if (!WinInterop.IsProcessRunning(hProcess))
+                {
+                    Console.WriteLine("El juego ha sido cerrado");
+                    break;
+                }
+
+                if (Console.KeyAvailable)
+                {
+                    var key = Console.ReadKey(true).Key;
+                    switch (key)
+                    {
+                        case ConsoleKey.D1:
+                            ShowPlayerStats();
+                            break;
+
+                        case ConsoleKey.D2:
+                            ModifyHealth();
+                            break;
+
+                        case ConsoleKey.D3:
+                            ModifyAmmount();
+                            break;
+                        case ConsoleKey.D5:
+                            return;
+                    }
+                }
+
+                WinInterop.Sleep(50);
+            }
+        }
+
+        private static void ShowPlayerStats()
+        {
+            try
+            {
+                int health = MemoryManager.Read<int>(hProcess, PLAYER_BASE + HEALTH_OFFSET);
+                int ammount = MemoryManager.Read<int>(hProcess, PLAYER_BASE + AMMOUNT_OFFSET);
+                // int exp = MemoryManager.Read<int>(hProcess, PLAYER_BASE + EXP_OFFSET);
+
+                //string name = MemoryManager.ReadString(hProcess, PLAYER_BASE + NAME_OFFSET, 50);
+
+                Console.WriteLine($"\n=== ESTADO DEL JUGADOR ===");
+                // Console.WriteLine($"Nombre: {name}");
+                Console.WriteLine($"Vida: {health}");
+                Console.WriteLine($"Balas: {ammount}");
+                //Console.WriteLine($"Experiencia: {exp}\n");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}");
+            }
+        }
+
+        private static void ModifyHealth()
+        {
+            Console.Write("\nNuevo valor de vida: ");
+            if (int.TryParse(Console.ReadLine(), out int newHealth))
+            {
+                MemoryManager.Write(hProcess, PLAYER_BASE + HEALTH_OFFSET, newHealth);
+                Console.WriteLine("Vida actualizada!");
+            }
+        }
+
+        private static void ModifyAmmount()
+        {
+
+            Console.Write("\nNuevo valor de municiones: ");
+            if (int.TryParse(Console.ReadLine(), out int newAmmount))
+            {
+                MemoryManager.Write(hProcess, PLAYER_BASE + AMMOUNT_OFFSET, newAmmount);
+                Console.WriteLine("municiones actualizada!");
+            }
+        }
     }
 }

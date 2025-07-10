@@ -1,12 +1,25 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-	  <TargetFramework>net7.0</TargetFramework>
-	  <ImplicitUsings>enable</ImplicitUsings>
-	  <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-	  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-	  <IncludeSymbolsInSingleFile>true</IncludeSymbolsInSingleFile>
-	  <PublishAot>true</PublishAot>
-	  <StripSymbols>true</StripSymbols>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+		<!-- Esencial para DLL -->
+
+		<!-- Configuración AOT específica para DLL -->
+		<PublishAot>true</PublishAot>
+
+		<!-- Compatibilidad con bibliotecas nativas -->
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+		<!-- Optimizaciones -->
+		<StripSymbols>true</StripSymbols>
+		<Charset>UTF-8</Charset>
+	</PropertyGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\AvalonInjectLib\AvalonInjectLib.csproj" />
+	</ItemGroup>
+
 </Project>

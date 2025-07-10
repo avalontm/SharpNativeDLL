@@ -5,9 +5,9 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
-using static SharpNativeDLL.Helpers.OpenGLInterop;
+using static AvalonInjectLib.OpenGLInterop;
 
-namespace SharpNativeDLL.Helpers
+namespace AvalonInjectLib
 {
     public static class OpenGLManager
     {

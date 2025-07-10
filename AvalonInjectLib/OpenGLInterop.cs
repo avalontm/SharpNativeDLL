@@ -1,12 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
-using static SharpNativeDLL.Helpers.Structs;
+﻿using System.Runtime.InteropServices;
+using static AvalonInjectLib.Structs;
 
-namespace SharpNativeDLL.Helpers
+namespace AvalonInjectLib
 {
     public static class OpenGLInterop
     {
