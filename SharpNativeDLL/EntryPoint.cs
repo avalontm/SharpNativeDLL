@@ -1,8 +1,8 @@
 ﻿using AvalonInjectLib;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using static AvalonInjectLib.Structs;
-using static AvalonInjectLib.UIFramework;
 
 namespace SharpNativeDLL
 {
@@ -122,41 +122,45 @@ namespace SharpNativeDLL
             Renderer.CurrentAPI = Renderer.GraphicsAPI.OpenGL;
             Renderer.InitializeGraphics(processId);
             MenuSystem.Initialize();
+            Renderer.SetRenderCallback(MenuSystem.Render);
         }
 
         private static void MainLoop()
         {
-            while (true)
+            InputSystem.Initialize(processId);
+
+            try
             {
-                if (!WinInterop.IsProcessRunning(hProcess))
+                while (true)
                 {
-                    Console.WriteLine("El juego ha sido cerrado");
-                    break;
-                }
-
-                if (Console.KeyAvailable)
-                {
-                    var key = Console.ReadKey(true).Key;
-                    switch (key)
+                    if (!WinInterop.IsProcessRunning(hProcess))
                     {
-                        case ConsoleKey.D1:
-                            ShowPlayerStats();
-                            break;
-
-                        case ConsoleKey.D2:
-                            ModifyHealth();
-                            break;
-
-                        case ConsoleKey.D3:
-                            ModifyAmmount();
-                            break;
-                        case ConsoleKey.D5:
-                            return;
+                        Console.WriteLine("El juego ha sido cerrado");
+                        break;
                     }
-                }
 
-                WinInterop.Sleep(50);
-                
+                    if (InputSystem.GetKeyDown(Keys.D1))
+                    {
+                        ShowPlayerStats();
+                    }
+
+                    if (InputSystem.GetKeyDown(Keys.D2))
+                    {
+                        ModifyHealth();
+                    }
+
+                    if (InputSystem.GetKeyDown(Keys.D3))
+                    {
+                        ModifyAmmount();
+                    }
+
+                    InputSystem.Update();
+                    WinInterop.Sleep(16); // ~60 FPS
+                }
+            }
+            finally
+            {
+                InputSystem.Shutdown();
             }
         }
 
@@ -185,23 +189,29 @@ namespace SharpNativeDLL
 
         private static void ModifyHealth()
         {
-            Console.Write("\nNuevo valor de vida: ");
-            if (int.TryParse(Console.ReadLine(), out int newHealth))
+            try
             {
-                MemoryManager.Write(hProcess, PLAYER_BASE + HEALTH_OFFSET, newHealth);
-                Console.WriteLine("Vida actualizada!");
+                int health = MemoryManager.Read<int>(hProcess, PLAYER_BASE + HEALTH_OFFSET);
+                MemoryManager.Write(hProcess, PLAYER_BASE + HEALTH_OFFSET, health + 10);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: ");
             }
         }
 
         private static void ModifyAmmount()
         {
-
-            Console.Write("\nNuevo valor de municiones: ");
-            if (int.TryParse(Console.ReadLine(), out int newAmmount))
+            try
             {
-                MemoryManager.Write(hProcess, PLAYER_BASE + AMMOUNT_OFFSET, newAmmount);
-                Console.WriteLine("municiones actualizada!");
+                int ammount = MemoryManager.Read<int>(hProcess, PLAYER_BASE + AMMOUNT_OFFSET);
+                MemoryManager.Write(hProcess, PLAYER_BASE + AMMOUNT_OFFSET, ammount + 10);
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: ");
+            }
+
         }
     }
 }

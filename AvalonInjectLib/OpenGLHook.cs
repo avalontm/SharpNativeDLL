@@ -7,6 +7,7 @@ namespace AvalonInjectLib
 {
     public static unsafe class OpenGLHook
     {
+        #region PROPERTIES
         // Constantes OpenGL
         private const int GL_LINES = 0x0001;
         private const int GL_TRIANGLES = 0x0004;
@@ -52,6 +53,8 @@ namespace AvalonInjectLib
 
         [DllImport("kernel32.dll")]
         private static extern bool FlushInstructionCache(IntPtr hProcess, IntPtr lpBaseAddress, uint dwSize);
+
+        #endregion
 
         public static void SetRenderCallback(Action renderCallback)
         {

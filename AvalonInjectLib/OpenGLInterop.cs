@@ -3,7 +3,7 @@ using static AvalonInjectLib.Structs;
 
 namespace AvalonInjectLib
 {
-    public static class OpenGLInterop
+    public unsafe static class OpenGLInterop
     {
         #region The OpenGL constant definitions.
         [Flags()]
@@ -1008,6 +1008,19 @@ namespace AvalonInjectLib
 
         [DllImport("opengl32.dll", CallingConvention = CallingConvention.Winapi, SetLastError = true, CharSet = CharSet.Ansi)]
         public static extern bool wglDeleteContext(IntPtr hglrc);
+
+        [DllImport("opengl32.dll")]
+        public static extern void glGenTextures(int n, uint* textures);
+
+        [DllImport("opengl32.dll")]
+        public static extern void glBindTexture(int target, uint texture);
+
+        [DllImport("opengl32.dll")]
+        public static extern void glTexImage2D(int target, int level, int internalFormat,
+            int width, int height, int border, int format, int type, IntPtr data);
+
+        [DllImport("opengl32.dll")]
+        public static extern void glTexParameteri(int target, int pname, int param);
 
         [DllImport("opengl32.dll")]
         public static extern void glAccum(uint op, float value);
