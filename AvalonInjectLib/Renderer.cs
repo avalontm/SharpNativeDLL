@@ -46,7 +46,7 @@ namespace AvalonInjectLib
             }
         }
 
-        public static void DrawText(string text, float x, float y, UIFramework.Color color)
+        public static void DrawText(string text, float x, float y, UIFramework.Color color, float size = 12f)
         {
             if (CurrentAPI == GraphicsAPI.OpenGL)
             {
@@ -58,5 +58,24 @@ namespace AvalonInjectLib
             }
         }
 
+        public static Vector2 MeasureText(string text, float size)
+        {
+            return new Vector2();
+        }
+
+        public static void DrawRoundedRect(float x, float y, float width, float height, float v, UIFramework.Color bgColor)
+        {
+         
+        }
+
+        public static void DrawRectOutline(float x, float y, float width, float height, UIFramework.Color color, float v)
+        {
+            
+        }
+
+        public static Vector2 MeasureText(string textBeforeCaret)
+        {
+            return new Vector2();
+        }
     }
 }
