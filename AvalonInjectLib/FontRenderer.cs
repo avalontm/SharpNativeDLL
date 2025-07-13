@@ -1,181 +1,418 @@
-﻿using System;
-using System.ComponentModel;
-using System.Drawing;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+﻿using StbImageWriteSharp;
+using StbTrueTypeSharp;
+using static AvalonInjectLib.OpenGLInterop;
+using static AvalonInjectLib.Structs;
 
 namespace AvalonInjectLib
 {
-
-    public static unsafe class FontRenderer
+    // Enum para tipos de fuente
+    public enum FontType
     {
-        // ============ CONSTANTES ============
-        private const int GL_TEXTURE_2D = 0x0DE1;
-        private const int GL_QUADS = 0x0007;
-        private const int GL_BLEND = 0x0BE2;
-        private const int GL_RGBA = 0x1908;
-        private const int GL_UNSIGNED_BYTE = 0x1401;
+        Normal,
+        Bold
+    }
 
-        // ============ ESTADO ============
-        private static uint _fontTexture;
-        private static float _charWidth = 8.0f;
-        private static float _charHeight = 13.0f;
-        private static int _textureWidth = 128;
-        private static int _textureHeight = 128;
+    // Estructura para almacenar información de cada fuente
+    internal struct FontInfo
+    {
+        public Dictionary<char, GlyphData> Glyphs;
+        public int TextureId;
+        public float FontScale;
+        public int Ascent;
+        public int Descent;
+        public int LineGap;
+        public byte[] AtlasData;
+    }
 
-        // Modificación para corregir el error CS1503: Argumento 2: no se puede convertir de 'uint[]' a 'uint*'  
-        public static void Initialize()
+    internal static unsafe class FontRenderer
+    {
+        // Diccionario para almacenar múltiples fuentes
+        private static readonly Dictionary<FontType, FontInfo> _fonts = new();
+
+        private static int _atlasSize = 512;
+        private static float pixelHeight = 24;
+        private static bool _isInitialized;
+
+        // Glyph packing (se reutiliza para cada fuente)
+        private static int _currentX = 0;
+        private static int _currentY = 0;
+        private static int _currentLineHeight = 0;
+
+        public static bool IsInitialized { get { return _isInitialized; } }
+
+        public static void Initialize(IntPtr originalContext)
         {
-            // 1. Crear textura OpenGL  
-            uint texture;
-            glGenTextures(1, &texture);
-            _fontTexture = texture;
-            glBindTexture(GL_TEXTURE_2D, _fontTexture);
+            Logger.Debug("Iniciando inicialización del renderer de fuentes...", "FontRenderer");
 
-            // 2. Generar bitmap de fuente minimalista (8x13 píxeles por carácter)  
-            byte[] pixels = GenerateSimpleFontBitmap();
+            if (IsInitialized) return;
 
-            fixed (byte* ptr = pixels)
+            try
             {
-                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, _textureWidth, _textureHeight, 0,
-                             GL_RGBA, GL_UNSIGNED_BYTE, ptr);
-            }
+                // Inicializar fuente normal
+                InitializeFont(FontType.Normal, "AvalonInjectLib.ARIAL.TTF");
 
-            // 3. Configurar textura  
-            glTexParameteri(GL_TEXTURE_2D, 0x2801, 0x2601); // GL_LINEAR  
-            glTexParameteri(GL_TEXTURE_2D, 0x2800, 0x2601); // GL_LINEAR  
+                // Inicializar fuente bold
+                InitializeFont(FontType.Bold, "AvalonInjectLib.ARIALBD.TTF");
+
+                Logger.Debug("Renderer de fuentes inicializado correctamente", "FontRenderer");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"ERROR durante la inicialización: {ex.Message}", "FontRenderer");
+                throw;
+            }
+            finally
+            {
+                _isInitialized = true;
+            }
         }
 
-        private static byte[] GenerateSimpleFontBitmap()
+        private static void InitializeFont(FontType fontType, string resourceName)
         {
-            byte[] pixels = new byte[_textureWidth * _textureHeight * 4];
+            Logger.Debug($"Inicializando fuente {fontType}...", "FontRenderer");
 
-            // Caracteres ASCII 32-126 (95 caracteres)
-            for (int i = 32; i < 127; i++)
+            // Resetear variables de posición para cada fuente
+            _currentX = 0;
+            _currentY = 0;
+            _currentLineHeight = 0;
+
+            Logger.Debug($"Cargando datos de fuente embebida: {resourceName}...", "FontRenderer");
+            byte[] fontData = EmbeddedResourceLoader.LoadResource(resourceName);
+            Logger.Debug($"Fuente {fontType} cargada, tamaño: {fontData.Length} bytes", "FontRenderer");
+
+            // 1. Inicializar STB TrueType
+            var stbFontInfo = new StbTrueType.stbtt_fontinfo();
+            fixed (byte* ptr = fontData)
             {
-                int charX = (i % 16) * 8;
-                int charY = (i / 16) * 13;
-
-                // Datos hardcodeados para caracteres básicos (ejemplo: 'A')
-                if (i == 'A') GenerateCharA(pixels, charX, charY);
-                // Añadir más caracteres según sea necesario...
+                Logger.Debug($"Inicializando fuente {fontType} con STB TrueType...", "FontRenderer");
+                if (StbTrueType.stbtt_InitFont(stbFontInfo, ptr, 0) == 0)
+                    throw new Exception($"Failed to load font {fontType}");
+                Logger.Debug($"Fuente {fontType} inicializada correctamente con STB TrueType", "FontRenderer");
             }
 
-            return pixels;
-        }
+            // 2. Obtener métricas de la fuente
+            int ascent, descent, lineGap;
+            int* pAscent = &ascent;
+            int* pDescent = &descent;
+            int* pLineGap = &lineGap;
+            StbTrueType.stbtt_GetFontVMetrics(stbFontInfo, pAscent, pDescent, pLineGap);
 
-        private static void GenerateCharA(byte[] pixels, int startX, int startY)
-        {
-            // Patrón de la letra 'A' en 0s y 1s (8x13)
-            int[,] pattern = new int[13, 8]
+            // 3. Configurar atlas
+            float fontScale = StbTrueType.stbtt_ScaleForPixelHeight(stbFontInfo, pixelHeight);
+            Logger.Debug($"Escala de fuente {fontType} calculada: {fontScale} para altura {pixelHeight}pix", "FontRenderer");
+            Logger.Debug($"Métricas {fontType}: ascent={ascent}, descent={descent}, lineGap={lineGap}", "FontRenderer");
+
+            // Crear atlas RGBA
+            byte[] atlasData = new byte[_atlasSize * _atlasSize * 4];
+            Logger.Debug($"Atlas de textura {fontType} creado, tamaño: {_atlasSize}x{_atlasSize} RGBA", "FontRenderer");
+
+            // Crear estructura de información de fuente
+            var fontInfo = new FontInfo
             {
-        {0,0,1,1,1,0,0,0},
-        {0,1,1,0,1,1,0,0},
-        {1,1,0,0,0,1,1,0},
-        {1,1,0,0,0,1,1,0},
-        {1,1,1,1,1,1,1,0},
-        {1,1,0,0,0,1,1,0},
-        {1,1,0,0,0,1,1,0},
-        {1,1,0,0,0,1,1,0},
-        {0,0,0,0,0,0,0,0},
-        {0,0,0,0,0,0,0,0},
-        {0,0,0,0,0,0,0,0},
-        {0,0,0,0,0,0,0,0},
-        {0,0,0,0,0,0,0,0}
+                Glyphs = new Dictionary<char, GlyphData>(),
+                FontScale = fontScale,
+                Ascent = ascent,
+                Descent = descent,
+                LineGap = lineGap,
+                AtlasData = atlasData
             };
 
-            for (int y = 0; y < 13; y++)
+            // 4. Rasterizar glifos básicos (ASCII)
+            Logger.Debug($"Rasterizando glifos ASCII {fontType} (32-127)...", "FontRenderer");
+            for (int i = 32; i < 128; i++)
             {
-                for (int x = 0; x < 8; x++)
+                char c = (char)i;
+                AddGlyph(stbFontInfo, c, ref fontInfo);
+            }
+            Logger.Debug($"{fontInfo.Glyphs.Count} glifos {fontType} rasterizados", "FontRenderer");
+
+            // 5. Crear textura OpenGL
+            Logger.Debug($"Creando textura OpenGL {fontType}...", "FontRenderer");
+            fontInfo.TextureId = CreateTexture(fontInfo.AtlasData);
+            Logger.Debug($"Textura OpenGL {fontType} creada, ID: {fontInfo.TextureId}", "FontRenderer");
+
+            // Guardar información de la fuente
+            _fonts[fontType] = fontInfo;
+
+            Logger.Debug($"Fuente {fontType} inicializada correctamente", "FontRenderer");
+        }
+
+        public static float GetScaleForDesiredSize(float desiredPixelHeight)
+        {
+            return desiredPixelHeight / pixelHeight;
+        }
+
+        private static void AddGlyph(StbTrueType.stbtt_fontinfo fontInfo, char c, ref FontInfo font)
+        {
+            // Obtener métricas del glifo
+            int advance, bearing;
+            int* pAdvance = &advance;
+            int* pBearing = &bearing;
+            StbTrueType.stbtt_GetCodepointHMetrics(fontInfo, c, pAdvance, pBearing);
+
+            // Obtener cuadro delimitador del glifo
+            int x0, y0, x1, y1;
+            int* pX0 = &x0;
+            int* pY0 = &y0;
+            int* pX1 = &x1;
+            int* pY1 = &y1;
+            StbTrueType.stbtt_GetCodepointBitmapBox(fontInfo, c, font.FontScale, font.FontScale, pX0, pY0, pX1, pY1);
+
+            // Calcular dimensiones del bitmap
+            int w = x1 - x0;
+            int h = y1 - y0;
+
+            // Manejar caracteres especiales (espacios, etc.)
+            if (w <= 0 || h <= 0)
+            {
+                // Para espacios y caracteres sin bitmap, solo guardar el advance
+                font.Glyphs[c] = new GlyphData
                 {
-                    int pos = ((startY + y) * _textureWidth + (startX + x)) * 4;
-                    if (pattern[y, x] == 1)
-                    {
-                        pixels[pos] = 255; // R
-                        pixels[pos + 1] = 255; // G
-                        pixels[pos + 2] = 255; // B
-                        pixels[pos + 3] = 255; // A
-                    }
+                    Advance = advance * font.FontScale,
+                    BearingX = bearing * font.FontScale,
+                    BearingY = y0,
+                    Width = 0,
+                    Height = 0,
+                    TexCoords = new Rect { X = 0, Y = 0, Width = 0, Height = 0 }
+                };
+                return;
+            }
+
+            // Verificar si el glifo cabe en la línea actual
+            if (_currentX + w + 2 >= _atlasSize) // +2 para padding
+            {
+                // No cabe, mover a siguiente línea
+                _currentX = 0;
+                _currentY += _currentLineHeight + 2; // +2 para padding entre líneas
+                _currentLineHeight = 0;
+
+                // Verificar si hay espacio vertical suficiente
+                if (_currentY + h + 2 >= _atlasSize)
+                {
+                    Logger.Error($"Atlas lleno! No se pudo añadir el carácter: '{c}'", "FontRenderer");
+                    return;
                 }
+            }
+
+            // Actualizar altura máxima de la línea actual
+            if (h > _currentLineHeight)
+            {
+                _currentLineHeight = h;
+            }
+
+            // Calcular posición exacta en el atlas (con padding)
+            int xPos = _currentX + 1; // +1 para padding izquierdo
+            int yPos = _currentY + 1; // +1 para padding superior
+
+            // Rasterizar el glifo
+            byte[] bitmap = new byte[w * h];
+            fixed (byte* ptr = bitmap)
+            {
+                StbTrueType.stbtt_MakeCodepointBitmap(fontInfo, ptr, w, h, w, font.FontScale, font.FontScale, c);
+            }
+
+            // Copiar datos al atlas RGBA con alpha correcto
+            for (int row = 0; row < h; row++)
+            {
+                int dstY = yPos + row;
+                if (dstY >= _atlasSize) break;
+
+                for (int col = 0; col < w; col++)
+                {
+                    int dstX = xPos + col;
+                    if (dstX >= _atlasSize) break;
+
+                    int srcPos = row * w + col;
+                    int dstPos = (dstY * _atlasSize + dstX) * 4; // RGBA = 4 bytes por pixel
+
+                    byte alpha = bitmap[srcPos];
+
+                    // Formato RGBA: R, G, B, A
+                    font.AtlasData[dstPos] = 255;     // R - blanco
+                    font.AtlasData[dstPos + 1] = 255; // G - blanco
+                    font.AtlasData[dstPos + 2] = 255; // B - blanco
+                    font.AtlasData[dstPos + 3] = alpha; // A - usar el valor del bitmap como alpha
+                }
+            }
+
+            // Guardar información del glifo con coordenadas correctas
+            font.Glyphs[c] = new GlyphData
+            {
+                Advance = advance * font.FontScale,
+                BearingX = bearing * font.FontScale,
+                BearingY = y0, // Usar y0 directamente
+                Width = w,
+                Height = h,
+                TexCoords = new Rect
+                {
+                    X = (float)xPos / _atlasSize,
+                    Y = (float)yPos / _atlasSize,
+                    Width = (float)w / _atlasSize,
+                    Height = (float)h / _atlasSize
+                }
+            };
+
+            // Actualizar posición para el siguiente glifo
+            _currentX += w + 2; // Avanzar con padding derecho
+        }
+
+        private static int CreateTexture(byte[] atlasData)
+        {
+            uint texture;
+            glGenTextures(1, &texture);
+            int textureId = (int)texture;
+
+            glBindTexture(GL_TEXTURE_2D, (uint)textureId);
+
+            // Usar GL_RGBA para textura con alpha
+            fixed (byte* ptr = atlasData)
+            {
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, _atlasSize, _atlasSize, 0, GL_RGBA, GL_UNSIGNED_BYTE, (IntPtr)ptr);
+            }
+
+            // Configuración de filtrado
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+            return textureId;
+        }
+
+        private static void SaveAtlasToFile(string filePath, byte[] atlasData)
+        {
+            try
+            {
+                using (var stream = File.Create(filePath))
+                {
+                    ImageWriter writer = new ImageWriter();
+                    writer.WritePng(atlasData, _atlasSize, _atlasSize,
+                                  ColorComponents.RedGreenBlueAlpha, stream);
+                }
+                Logger.Info($"Atlas guardado en: {filePath}", "FontRenderer");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Error al guardar atlas: {ex.Message}", "FontRenderer");
             }
         }
 
-        // ============ RENDERIZADO DE TEXTO ============
-        public static void DrawText(string text, float x, float y, float scale, UIFramework.Color color)
+        // Método principal para renderizar texto con tipo de fuente especificado
+        public static unsafe void DrawText(string text, float x, float y, float scale, Color color, FontType fontType = FontType.Normal)
         {
-            if (_fontTexture == 0) return;
+            if (!_fonts.ContainsKey(fontType) || string.IsNullOrEmpty(text)) return;
 
+            var font = _fonts[fontType];
+            if (font.TextureId == 0) return;
+
+            // Configurar textura y blending para texto
             glEnable(GL_TEXTURE_2D);
-            glBindTexture(GL_TEXTURE_2D, _fontTexture);
-            glEnable(GL_BLEND);
-            glBlendFunc(0x0302, 0x0303); // SRC_ALPHA, ONE_MINUS_SRC_ALPHA
+            glBindTexture(GL_TEXTURE_2D, (uint)font.TextureId);
+
+            // Configurar texture environment para multiplicar color con textura
+            glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 
             float startX = x;
+            float currentY = y;
+
+            // Calcular la línea base usando el ascent de la fuente
+            float baseline = currentY + (font.Ascent * font.FontScale * scale);
+
             foreach (char c in text)
             {
-                if (c < 32 || c > 126) continue;
+                // Manejar saltos de línea
+                if (c == '\n')
+                {
+                    startX = x;
+                    currentY += pixelHeight * scale;
+                    baseline = currentY + (font.Ascent * font.FontScale * scale);
+                    continue;
+                }
 
-                int charIndex = c - 32;
-                float texX = (charIndex % 16) * (_charWidth / _textureWidth);
-                float texY = (charIndex / 16) * (_charHeight / _textureHeight);
+                if (!font.Glyphs.TryGetValue(c, out var glyph)) continue;
 
-                float w = _charWidth * scale;
-                float h = _charHeight * scale;
+                // Saltear caracteres sin bitmap (espacios)
+                if (glyph.Width == 0 || glyph.Height == 0)
+                {
+                    startX += glyph.Advance * scale;
+                    continue;
+                }
 
+                // Calcular posición del glifo relativa a la baseline
+                float xPos = startX + glyph.BearingX * scale;
+                float yPos = baseline + glyph.BearingY * scale; // BearingY puede ser negativo
+
+                float w = glyph.Width * scale;
+                float h = glyph.Height * scale;
+
+                // Coordenadas de textura
+                float u0 = glyph.TexCoords.X;
+                float v0 = glyph.TexCoords.Y;
+                float u1 = u0 + glyph.TexCoords.Width;
+                float v1 = v0 + glyph.TexCoords.Height;
+
+                // Renderizar el quad
                 glBegin(GL_QUADS);
-                glColor3f(color.R, color.R, color.R);
+                glColor4f(color.R, color.G, color.B, color.A);
 
-                glTexCoord2f(texX, texY); glVertex2f(startX, y);
-                glTexCoord2f(texX + (_charWidth / _textureWidth), texY); glVertex2f(startX + w, y);
-                glTexCoord2f(texX + (_charWidth / _textureWidth), texY + (_charHeight / _textureHeight));
-                glVertex2f(startX + w, y + h);
-                glTexCoord2f(texX, texY + (_charHeight / _textureHeight)); glVertex2f(startX, y + h);
+                // Quad con coordenadas de textura
+                glTexCoord2f(u0, v0); glVertex2f(xPos, yPos);           // Superior izquierdo
+                glTexCoord2f(u1, v0); glVertex2f(xPos + w, yPos);       // Superior derecho
+                glTexCoord2f(u1, v1); glVertex2f(xPos + w, yPos + h);   // Inferior derecho
+                glTexCoord2f(u0, v1); glVertex2f(xPos, yPos + h);       // Inferior izquierdo
 
                 glEnd();
 
-                startX += w;
+                // Avanzar a la siguiente posición
+                startX += glyph.Advance * scale;
             }
 
+            // Limpiar estado
             glDisable(GL_TEXTURE_2D);
         }
 
-        // ============ IMPORTS OPENGL ============
-        [DllImport("opengl32.dll")]
-        private static extern void glGenTextures(int n, uint* textures);
+        // Sobrecarga del método original para mantener compatibilidad
+        public static unsafe void DrawText(string text, float x, float y, float scale, Color color)
+        {
+            DrawText(text, x, y, scale, color, FontType.Normal);
+        }
 
-        [DllImport("opengl32.dll")]
-        private static extern void glBindTexture(int target, uint texture);
+        // Método auxiliar para obtener dimensiones del texto con tipo de fuente especificado
+        public static (float width, float height) MeasureText(string text, float scale, FontType fontType = FontType.Normal)
+        {
+            if (string.IsNullOrEmpty(text) || !_fonts.ContainsKey(fontType)) return (0, 0);
 
-        [DllImport("opengl32.dll")]
-        private static extern void glTexImage2D(int target, int level, int internalFormat,
-                                              int width, int height, int border,
-                                              int format, int type, void* data);
+            var font = _fonts[fontType];
+            float width = 0;
+            float height = (font.Ascent - font.Descent) * font.FontScale * scale;
 
-        [DllImport("opengl32.dll")]
-        private static extern void glTexParameteri(int target, int pname, int param);
+            foreach (char c in text)
+            {
+                if (font.Glyphs.TryGetValue(c, out var glyph))
+                {
+                    width += glyph.Advance * scale;
+                }
+            }
 
-        [DllImport("opengl32.dll")]
-        private static extern void glEnable(int cap);
+            return (width, height);
+        }
 
-        [DllImport("opengl32.dll")]
-        private static extern void glDisable(int cap);
+        // Sobrecarga del método original para mantener compatibilidad
+        public static (float width, float height) MeasureText(string text, float scale)
+        {
+            return MeasureText(text, scale, FontType.Normal);
+        }
 
-        [DllImport("opengl32.dll")]
-        private static extern void glBlendFunc(int sfactor, int dfactor);
+        // Método para obtener información de una fuente específica
+        public static FontInfo? GetFontInfo(FontType fontType)
+        {
+            return _fonts.ContainsKey(fontType) ? _fonts[fontType] : null;
+        }
 
-        [DllImport("opengl32.dll")]
-        private static extern void glBegin(int mode);
-
-        [DllImport("opengl32.dll")]
-        private static extern void glEnd();
-
-        [DllImport("opengl32.dll")]
-        private static extern void glTexCoord2f(float s, float t);
-
-        [DllImport("opengl32.dll")]
-        private static extern void glVertex2f(float x, float y);
-
-        [DllImport("opengl32.dll")]
-        private static extern void glColor3f(float r, float g, float b);
+        // Método para verificar si una fuente está cargada
+        public static bool IsFontLoaded(FontType fontType)
+        {
+            return _fonts.ContainsKey(fontType) && _fonts[fontType].TextureId > 0;
+        }
     }
 }

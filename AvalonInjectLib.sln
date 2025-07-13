@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.4.33020.496
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SharpNativeDLL", "SharpNativeDLL\SharpNativeDLL.csproj", "{470A763A-60F8-4D96-B6AB-5D90A4092016}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AssaultCube", "SharpNativeDLL\AssaultCube.csproj", "{470A763A-60F8-4D96-B6AB-5D90A4092016}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AvalonInjectLib", "AvalonInjectLib\AvalonInjectLib.csproj", "{826A7753-58A0-4DB5-93CB-E6B8788E0B95}"
 EndProject

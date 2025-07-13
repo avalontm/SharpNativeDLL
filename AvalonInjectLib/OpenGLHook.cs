@@ -5,7 +5,7 @@ using static AvalonInjectLib.Structs;
 
 namespace AvalonInjectLib
 {
-    public static unsafe class OpenGLHook
+    internal static unsafe class OpenGLHook
     {
         #region PROPERTIES
         // Constantes OpenGL
@@ -21,12 +21,37 @@ namespace AvalonInjectLib
         private const int GL_ONE_MINUS_SRC_ALPHA = 0x0303;
         private const int GL_DEPTH_TEST = 0x0B71;
         private const uint GL_ALL_ATTRIB_BITS = 0xFFFFFFFF;
+        public const uint GL_CULL_FACE = 0x0B44;
+        public const int GL_ONE = 1;
+        public const int GL_BLEND_SRC_ALPHA = 0x80CB;
+        public const int GL_BLEND_DST_ALPHA = 0x80CA;
+        public const int GL_CLAMP_TO_EDGE = 0x812F;
+        // Constantes de iluminación y texturas
+        public const int GL_LIGHTING = 0x0B50;
+        public const int GL_TEXTURE_2D = 0x0DE1;
+
+        // Constantes de filtrado de texturas
+        public const int GL_TEXTURE_MIN_FILTER = 0x2801;
+        public const int GL_TEXTURE_MAG_FILTER = 0x2800;
+        public const int GL_LINEAR = 0x2601;
+
+        // Constantes de wrapping de texturas
+        public const int GL_TEXTURE_WRAP_S = 0x2802;
+        public const int GL_TEXTURE_WRAP_T = 0x2803;
+
+        // Alpha testing constants
+        public const int GL_ALPHA_TEST = 0x0BC0;
+        public const int GL_GREATER = 0x0204;
+
+        // Shading model constant
+        public const int GL_SMOOTH = 0x1D01;
 
         // Estado
         private static bool _initialized = false;
         private static int _screenWidth = 1920;
         private static int _screenHeight = 1080;
-        private static Action _renderCallback = null;
+        private static List<Action> _renderCallbacks = new List<Action>();
+
 
         // Hooking
         private static IntPtr _originalWglSwapBuffers = IntPtr.Zero;
@@ -38,9 +63,9 @@ namespace AvalonInjectLib
         private delegate bool wglSwapBuffersDelegate(IntPtr hdc);
         private static wglSwapBuffersDelegate _originalWglSwapBuffersDelegate;
 
-        public static bool Initialized => _initialized;
-        public static int ScreenWidth => _screenWidth;
-        public static int ScreenHeight => _screenHeight;
+        internal static bool Initialized => _initialized;
+        internal static int ScreenWidth => _screenWidth;
+        internal static int ScreenHeight => _screenHeight;
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool VirtualProtect(IntPtr lpAddress, uint dwSize, uint flNewProtect, out uint lpflOldProtect);
@@ -56,12 +81,47 @@ namespace AvalonInjectLib
 
         #endregion
 
-        public static void SetRenderCallback(Action renderCallback)
+        /// <summary>
+        /// Agrega un nuevo callback de renderizado a la lista
+        /// </summary>
+        internal static void AddRenderCallback(Action renderCallback)
         {
-            _renderCallback = renderCallback;
+            if (renderCallback != null && !_renderCallbacks.Contains(renderCallback))
+            {
+                _renderCallbacks.Add(renderCallback);
+            }
         }
 
-        public static bool Initialize(uint processId)
+        /// <summary>
+        /// Elimina un callback de renderizado de la lista
+        /// </summary>
+        internal static void RemoveRenderCallback(Action renderCallback)
+        {
+            if (renderCallback != null)
+            {
+                _renderCallbacks.Remove(renderCallback);
+            }
+        }
+
+        /// <summary>
+        /// Ejecuta todos los callbacks de renderizado registrados
+        /// </summary>
+        internal static void ExecuteRenderCallbacks()
+        {
+            foreach (var callback in _renderCallbacks.ToList()) // Usamos ToList() para evitar modificaciones durante la iteración
+            {
+                try
+                {
+                    callback?.Invoke();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error en render callback: {ex.Message}");
+                }
+            }
+        }
+
+        internal static bool Initialize(uint processId)
         {
             if (_initialized) return true;
 
@@ -71,56 +131,56 @@ namespace AvalonInjectLib
 
                 if (hProcess == IntPtr.Zero)
                 {
-                    Console.WriteLine($"Failed to open process: (0x{WinInterop.GetLastError():X8})");
+                    Logger.Warning($"Failed to open process: (0x{WinInterop.GetLastError():X8})", "OpenGLHook");
                     return false;
                 }
 
-                Console.WriteLine($"hProcess: {hProcess:X8}");
+                Logger.Debug($"hProcess: {hProcess:X8}", "OpenGLHook");
 
                 // Obtener dirección de wglSwapBuffers
                 IntPtr hOpenGL = WinInterop.GetModuleBaseEx(processId, "opengl32.dll");
 
                 if (hOpenGL == IntPtr.Zero)
                 {
-                    Console.WriteLine($"Failed to find opengl32.dll");
+                    Logger.Error($"Failed to find opengl32.dll", "OpenGLHook");
                     return false;
                 }
 
-                Console.WriteLine($"hOpenGL: {hOpenGL:X8}");
+                Logger.Debug($"hOpenGL: {hOpenGL:X8}", "OpenGLHook");
 
                 _originalWglSwapBuffers = WinInterop.GetProcAddressEx(hProcess, hOpenGL, "wglSwapBuffers");
 
                 if (_originalWglSwapBuffers == IntPtr.Zero)
                 {
-                    Console.WriteLine("Failed to find wglSwapBuffers");
+                    Logger.Error("Failed to find wglSwapBuffers", "OpenGLHook");
                     return false;
                 }
 
-                Console.WriteLine($"originalWglSwapBuffers: {_originalWglSwapBuffers:X8}");
+                Logger.Debug($"originalWglSwapBuffers: {_originalWglSwapBuffers:X8}", "OpenGLHook");
 
                 _originalWglSwapBuffersDelegate = Marshal.GetDelegateForFunctionPointer<wglSwapBuffersDelegate>(_originalWglSwapBuffers);
 
                 // Crear trampolín
                 if (!CreateTrampoline())
                 {
-                    Console.WriteLine("Failed to create trampoline");
+                    Logger.Error("Failed to create trampoline", "OpenGLHook");
                     return false;
                 }
 
                 // Instalar hook
                 if (!InstallHook())
                 {
-                    Console.WriteLine("Failed to install hook");
+                    Logger.Error("Failed to install hook", "OpenGLHook");
                     return false;
                 }
 
                 _initialized = true;
-                Console.WriteLine($"Hook Installed!");
+                Logger.Debug($"Hook Installed!", "OpenGLHook");
                 return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Initialization error: {ex}");
+                Logger.Error($"Initialization error: {ex.Message}", "OpenGLHook");
                 return false;
             }
         }
@@ -253,6 +313,8 @@ namespace AvalonInjectLib
             }
         }
 
+        // Fragmento de OpenGLHook.cs con las correcciones necesarias
+
         [UnmanagedCallersOnly]
         private static bool HookedWglSwapBuffers(IntPtr hdc)
         {
@@ -260,26 +322,44 @@ namespace AvalonInjectLib
             {
                 if (hdc != IntPtr.Zero)
                 {
+                    // 1. Guardar contexto original
                     IntPtr originalContext = OpenGLInterop.wglGetCurrentContext();
                     IntPtr originalHdc = OpenGLInterop.wglGetCurrentDC();
 
-                    // Crear contexto temporal
-                    IntPtr tempContext = OpenGLInterop.wglCreateContext(hdc);
-                    if (tempContext != IntPtr.Zero &&
-                        OpenGLInterop.wglShareLists(originalContext, tempContext))
+                    // 2. Crear contexto temporal si no existe uno actual
+                    if (originalContext == IntPtr.Zero)
                     {
-                        OpenGLInterop.wglMakeCurrent(hdc, tempContext);
-
-                        try
+                        originalContext = OpenGLInterop.wglCreateContext(hdc);
+                        if (originalContext == IntPtr.Zero)
                         {
-                            SetupOverlayRendering();
-                            _renderCallback?.Invoke();
-                            RestoreOpenGLState();
+                            return CallOriginalWglSwapBuffers(hdc);
                         }
-                        finally
+                        OpenGLInterop.wglMakeCurrent(hdc, originalContext);
+                    }
+
+                    try
+                    {
+                        // 3. Configurar renderizado
+                        SetupRendering();
+
+                        // 4. Inicializar font si es necesario
+                        if (!FontRenderer.IsInitialized)
+                        {
+                            FontRenderer.Initialize(originalContext);
+                        }
+
+                        // 5. Ejecutar renderizado
+                        ExecuteRenderCallbacks();
+                    }
+                    finally
+                    {
+                        // 6. Restaurar estado
+                        RestoreRendering();
+
+                        // Solo hacer MakeCurrent si teníamos un contexto original
+                        if (originalHdc != IntPtr.Zero)
                         {
                             OpenGLInterop.wglMakeCurrent(originalHdc, originalContext);
-                            OpenGLInterop.wglDeleteContext(tempContext);
                         }
                     }
                 }
@@ -288,35 +368,41 @@ namespace AvalonInjectLib
             {
                 Debug.WriteLine($"Render error: {ex}");
             }
-
             return CallOriginalWglSwapBuffers(hdc);
         }
 
-        private static void SetupOverlayRendering()
+        private static void SetupRendering()
         {
-            OpenGLInterop.glPushAttrib(GL_ALL_ATTRIB_BITS);
+            //Obtener dimensiones del viewport
+            int[] viewport = new int[4];
+            OpenGLInterop.glGetIntegerv(GL_VIEWPORT, viewport);
+
+            _screenWidth = viewport[2];
+            _screenHeight = viewport[3];
+
             OpenGLInterop.glMatrixMode(GL_PROJECTION);
-            OpenGLInterop.glPushMatrix();
             OpenGLInterop.glLoadIdentity();
+
+            //Configurar proyección ortográfica 2D
             OpenGLInterop.glOrtho(0, _screenWidth, _screenHeight, 0, -1, 1);
+
+            //Configurar matriz modelo-vista
             OpenGLInterop.glMatrixMode(GL_MODELVIEW);
-            OpenGLInterop.glPushMatrix();
             OpenGLInterop.glLoadIdentity();
-            OpenGLInterop.glEnable(GL_BLEND);
-            OpenGLInterop.glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+            //Estados básicos para overlay 2D
             OpenGLInterop.glDisable(GL_DEPTH_TEST);
+            OpenGLInterop.glEnable(OpenGLInterop.GL_BLEND);
+            OpenGLInterop.glBlendFunc(OpenGLInterop.GL_SRC_ALPHA, OpenGLInterop.GL_ONE_MINUS_SRC_ALPHA);
+            OpenGLInterop.glDisable(GL_LIGHTING);
         }
 
-        private static void RestoreOpenGLState()
+        private static void RestoreRendering()
         {
-            OpenGLInterop.glMatrixMode(GL_PROJECTION);
-            OpenGLInterop.glPopMatrix();
-            OpenGLInterop.glMatrixMode(GL_MODELVIEW);
-            OpenGLInterop.glPopMatrix();
-            OpenGLInterop.glPopAttrib();
+            OpenGLInterop.glEnable(GL_DEPTH_TEST);
         }
 
-        public static void Cleanup()
+        internal static void Cleanup()
         {
             if (!_initialized) return;
 
@@ -358,7 +444,7 @@ namespace AvalonInjectLib
         /// Dibuja una línea entre dos puntos
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void DrawLine(Vector2 start, Vector2 end, float thickness, Color color)
+        internal static void DrawLine(Vector2 start, Vector2 end, float thickness, Color color)
         {
             if (!_initialized) return;
 
@@ -374,7 +460,7 @@ namespace AvalonInjectLib
         /// Dibuja un rectángulo (contorno)
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void DrawBox(float x, float y, float width, float height, float thickness, Color color)
+        internal static void DrawBox(float x, float y, float width, float height, float thickness, Color color)
         {
             if (!_initialized) return;
 
@@ -392,7 +478,7 @@ namespace AvalonInjectLib
         /// Dibuja un rectángulo relleno
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void DrawFilledBox(float x, float y, float width, float height, Color color)
+        internal static void DrawFilledBox(float x, float y, float width, float height, Color color)
         {
             if (!_initialized) return;
 
@@ -409,7 +495,7 @@ namespace AvalonInjectLib
         /// Dibuja un círculo (contorno)
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void DrawCircle(Vector2 center, float radius, int segments, float thickness, Color color)
+        internal static void DrawCircle(Vector2 center, float radius, int segments, float thickness, Color color)
         {
             if (!_initialized) return;
 
@@ -432,7 +518,7 @@ namespace AvalonInjectLib
         /// Dibuja un círculo relleno
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void DrawFilledCircle(Vector2 center, float radius, int segments, Color color)
+        internal static void DrawFilledCircle(Vector2 center, float radius, Color color, int segments = 64)
         {
             if (!_initialized) return;
 
@@ -441,12 +527,18 @@ namespace AvalonInjectLib
 
             for (int i = 0; i < segments; i++)
             {
-                float angle1 = (float)i / segments * 6.28318530718f;
+                float angle1 = (float)i / segments * 6.28318530718f; // 2π radianes
                 float angle2 = (float)(i + 1) / segments * 6.28318530718f;
 
-                OpenGLInterop.glVertex2f(center.X, center.Y);
-                OpenGLInterop.glVertex2f(center.X + FastCos(angle1) * radius, center.Y + FastSin(angle1) * radius);
-                OpenGLInterop.glVertex2f(center.X + FastCos(angle2) * radius, center.Y + FastSin(angle2) * radius);
+                OpenGLInterop.glVertex2f(center.X, center.Y); // Centro
+                OpenGLInterop.glVertex2f(
+                    center.X + FastCos(angle1) * radius,
+                    center.Y + FastSin(angle1) * radius
+                );
+                OpenGLInterop.glVertex2f(
+                    center.X + FastCos(angle2) * radius,
+                    center.Y + FastSin(angle2) * radius
+                );
             }
 
             OpenGLInterop.glEnd();
@@ -455,13 +547,10 @@ namespace AvalonInjectLib
         /// <summary>
         /// Dibuja texto básico (requiere implementación de font atlas)
         /// </summary>
-        public static void DrawText(string text, Vector2 position, Color color, float scale = 1.0f)
+        internal static void DrawText(string text, Vector2 position, Color color, float scale = 1f)
         {
             if (!_initialized || string.IsNullOrEmpty(text)) return;
-
-            OpenGLInterop.glColor4f(color.R, color.G, color.B, color.A);
-            // Implementación de texto requeriría una textura de fuente pre-cargada
-            // Aquí iría la lógica para renderizar cada carácter
+            FontRenderer.DrawText(text, position.X, position.Y, scale, color);
         }
 
         // ================= MATH FUNCTIONS =================

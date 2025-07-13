@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Numerics;
+using System.Runtime.InteropServices;
 
 namespace AvalonInjectLib
 {
@@ -30,14 +31,350 @@ namespace AvalonInjectLib
             public int Y;
         }
 
-        public struct Vector2
+        // Estructura ViewMatrix
+        [StructLayout(LayoutKind.Sequential)]
+        public struct ViewMatrix
         {
-            public float X, Y;
-            public Vector2(float x, float y) { X = x; Y = y; }
+            // Column-major order (compatible con OpenGL/DirectX)
+            public float M11, M12, M13, M14; // Columna 1
+            public float M21, M22, M23, M24; // Columna 2
+            public float M31, M32, M33, M34; // Columna 3
+            public float M41, M42, M43, M44; // Columna 4
+
+            /// <summary>
+            /// Crea una ViewMatrix desde un array de OpenGL (column-major de 16 elementos)
+            /// </summary>
+            /// <param name="openGLMatrix">Array de 16 floats en formato column-major de OpenGL</param>
+            /// <returns>ViewMatrix con los datos del array</returns>
+            public static ViewMatrix FromOpenGLArray(float[] openGLMatrix)
+            {
+                if (openGLMatrix == null)
+                    throw new ArgumentNullException(nameof(openGLMatrix));
+
+                if (openGLMatrix.Length != 16)
+                    throw new ArgumentException("El array debe tener exactamente 16 elementos", nameof(openGLMatrix));
+
+                // Como ambos usan column-major, podemos copiar directamente
+                return new ViewMatrix
+                {
+                    // Columna 1 (elementos 0-3)
+                    M11 = openGLMatrix[0],
+                    M12 = openGLMatrix[1],
+                    M13 = openGLMatrix[2],
+                    M14 = openGLMatrix[3],
+
+                    // Columna 2 (elementos 4-7)
+                    M21 = openGLMatrix[4],
+                    M22 = openGLMatrix[5],
+                    M23 = openGLMatrix[6],
+                    M24 = openGLMatrix[7],
+
+                    // Columna 3 (elementos 8-11)
+                    M31 = openGLMatrix[8],
+                    M32 = openGLMatrix[9],
+                    M33 = openGLMatrix[10],
+                    M34 = openGLMatrix[11],
+
+                    // Columna 4 (elementos 12-15)
+                    M41 = openGLMatrix[12],
+                    M42 = openGLMatrix[13],
+                    M43 = openGLMatrix[14],
+                    M44 = openGLMatrix[15]
+                };
+            }
+
+            /// <summary>
+            /// Convierte la ViewMatrix a un array compatible con OpenGL
+            /// </summary>
+            /// <returns>Array de 16 floats en formato column-major</returns>
+            public float[] ToOpenGLArray()
+            {
+                return new float[]
+                {
+            // Columna 1
+            M11, M12, M13, M14,
+            // Columna 2
+            M21, M22, M23, M24,
+            // Columna 3
+            M31, M32, M33, M34,
+            // Columna 4
+            M41, M42, M43, M44
+                };
+            }
+
+            /// <summary>
+            /// Crea una matriz identidad
+            /// </summary>
+            public static ViewMatrix Identity
+            {
+                get
+                {
+                    return new ViewMatrix
+                    {
+                        M11 = 1.0f,
+                        M12 = 0.0f,
+                        M13 = 0.0f,
+                        M14 = 0.0f,
+                        M21 = 0.0f,
+                        M22 = 1.0f,
+                        M23 = 0.0f,
+                        M24 = 0.0f,
+                        M31 = 0.0f,
+                        M32 = 0.0f,
+                        M33 = 1.0f,
+                        M34 = 0.0f,
+                        M41 = 0.0f,
+                        M42 = 0.0f,
+                        M43 = 0.0f,
+                        M44 = 1.0f
+                    };
+                }
+            }
+
+            /// <summary>
+            /// Obtiene el elemento en la posición especificada (1-indexado)
+            /// </summary>
+            public float this[int row, int column]
+            {
+                get
+                {
+                    switch (row)
+                    {
+                        case 1:
+                            switch (column)
+                            {
+                                case 1: return M11;
+                                case 2: return M21;
+                                case 3: return M31;
+                                case 4: return M41;
+                            }
+                            break;
+                        case 2:
+                            switch (column)
+                            {
+                                case 1: return M12;
+                                case 2: return M22;
+                                case 3: return M32;
+                                case 4: return M42;
+                            }
+                            break;
+                        case 3:
+                            switch (column)
+                            {
+                                case 1: return M13;
+                                case 2: return M23;
+                                case 3: return M33;
+                                case 4: return M43;
+                            }
+                            break;
+                        case 4:
+                            switch (column)
+                            {
+                                case 1: return M14;
+                                case 2: return M24;
+                                case 3: return M34;
+                                case 4: return M44;
+                            }
+                            break;
+                    }
+                    throw new ArgumentOutOfRangeException("Row y Column deben estar entre 1 y 4");
+                }
+            }
+
+            public override string ToString()
+            {
+                return string.Format("\n" +
+                    "[{0,10:F4} {1,10:F4} {2,10:F4} {3,10:F4}]\n" +
+                    "[{4,10:F4} {5,10:F4} {6,10:F4} {7,10:F4}]\n" +
+                    "[{8,10:F4} {9,10:F4} {10,10:F4} {11,10:F4}]\n" +
+                    "[{12,10:F4} {13,10:F4} {14,10:F4} {15,10:F4}]",
+                    M11, M12, M13, M14,
+                    M21, M22, M23, M24,
+                    M31, M32, M33, M34,
+                    M41, M42, M43, M44);
+            }
         }
 
-        // Estructura para Color
-        public struct Color
+        [StructLayout(LayoutKind.Sequential)]
+        public struct Vector2
+        {
+            public float X;
+            public float Y;
+
+            public Vector2(float x, float y)
+            {
+                this.X = x; this.Y = y;
+            }
+
+            public override string ToString()
+            {
+                return $"({X:F2}, {Y:F2})";
+            }
+
+            public static Vector2 Zero = new Vector2();
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct Rect
+        {
+            public float X, Y, Width, Height;
+
+            public bool Contains(float px, float py) =>
+                px >= X && px <= X + Width && py >= Y && py <= Y + Height;
+
+            public Rect(float x, float y, float w, float h)
+            {
+                X = x; Y = y; Width = w; Height = h;
+            }
+
+            public Rect(Vector2 position, Vector2 size)
+            {
+                X = position.X; Y = position.Y;
+                Width = size.X; Height = size.Y;
+            }
+
+            public Vector2 Position => new Vector2(X, Y);
+            public Vector2 Size => new Vector2(Width, Height);
+            public Vector2 Center => new Vector2(X + Width / 2, Y + Height / 2);
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct GlyphData
+        {
+            public float Advance;
+            public float BearingX;
+            public float BearingY;
+            public float Width;
+            public float Height;
+            public Rect TexCoords;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct Vector3
+        {
+            public float X;
+            public float Y;
+            public float Z;
+
+            public Vector3(float x, float y, float z)
+            {
+                X = x;
+                Y = y;
+                Z = z;
+            }
+
+            // Operaciones vectoriales básicas
+            public static Vector3 operator -(Vector3 a, Vector3 b)
+            {
+                return new Vector3(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
+            }
+
+            public static Vector3 operator +(Vector3 a, Vector3 b)
+            {
+                return new Vector3(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
+            }
+
+            public static Vector3 operator *(Vector3 a, float scalar)
+            {
+                return new Vector3(a.X * scalar, a.Y * scalar, a.Z * scalar);
+            }
+
+            // Métodos de utilidad
+            public static float Distance(Vector3 a, Vector3 b)
+            {
+                float dx = a.X - b.X;
+                float dy = a.Y - b.Y;
+                float dz = a.Z - b.Z;
+                return (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
+            }
+
+            public float DistanceTo(Vector3 other)
+            {
+                return Distance(this, other);
+            }
+
+            public static Vector3 SetOrigin(Vector3 currentPosition, Vector3 targetPosition)
+            {
+                return targetPosition - currentPosition;
+            }
+
+            // Nuevo: Normalización del vector
+            public Vector3 Normalized()
+            {
+                float length = (float)Math.Sqrt(X * X + Y * Y + Z * Z);
+                if (length > 0)
+                    return new Vector3(X / length, Y / length, Z / length);
+                return new Vector3(0, 0, 0);
+            }
+
+            // Sobreescritura de ToString para mejor visualización
+            public override string ToString()
+            {
+                return $"({X:F2}, {Y:F2}, {Z:F2})";
+            }
+        }
+
+
+        // Estructura Vector4
+        [StructLayout(LayoutKind.Sequential)]
+        public struct Vector4
+        {
+            public float X;
+            public float Y;
+            public float Z;
+            public float W;
+
+            public Vector4(float x, float y, float z, float w)
+            {
+                this.X = x;
+                this.Y = y;
+                this.Z = z;
+                this.W = w;
+            }
+
+            // Constructor desde Vector3
+            public Vector4(Vector3 vector3, float w)
+            {
+                this.X = vector3.X;
+                this.Y = vector3.Y;
+                this.Z = vector3.Z;
+                this.W = w;
+            }
+
+            // Método Transform para ViewMatrix (column-major order)
+            public static Vector4 Transform(Vector4 vector, ViewMatrix matrix)
+            {
+                return new Vector4(
+                    vector.X * matrix.M11 + vector.Y * matrix.M12 + vector.Z * matrix.M13 + vector.W * matrix.M14,
+                    vector.X * matrix.M21 + vector.Y * matrix.M22 + vector.Z * matrix.M23 + vector.W * matrix.M24,
+                    vector.X * matrix.M31 + vector.Y * matrix.M32 + vector.Z * matrix.M33 + vector.W * matrix.M34,
+                    vector.X * matrix.M41 + vector.Y * matrix.M42 + vector.Z * matrix.M43 + vector.W * matrix.M44
+                );
+            }
+
+            // Propiedades útiles
+            public static Vector4 Zero => new Vector4(0, 0, 0, 0);
+            public static Vector4 One => new Vector4(1, 1, 1, 1);
+
+            // Conversión a Vector3 (dividiendo por W si es necesario)
+            public Vector3 ToVector3()
+            {
+                if (W != 0)
+                {
+                    return new Vector3(X / W, Y / W, Z / W);
+                }
+                return new Vector3(X, Y, Z);
+            }
+
+            // ToString para debug
+            public override string ToString()
+            {
+                return $"({X}, {Y}, {Z}, {W})";
+            }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct Color
         {
             public float R, G, B, A;
             public Color(float r, float g, float b, float a = 1.0f)

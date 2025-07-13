@@ -6,95 +6,95 @@ using static AvalonInjectLib.Structs;
 
 namespace AvalonInjectLib
 {
-    public static unsafe class WinInterop
+    internal static unsafe class WinInterop
     {        
         // ================= CONSTANTES =================
-        public const uint TH32CS_SNAPMODULE = 0x00000008;
-        public const uint TH32CS_SNAPMODULE32 = 0x00000010;
-        public const uint TH32CS_SNAPPROCESS = 0x00000002;
-        public const IntPtr INVALID_HANDLE_VALUE = (IntPtr)(-1);
-        public const ushort IMAGE_DOS_SIGNATURE = 0x5A4D;
-        public const uint IMAGE_NT_SIGNATURE = 0x00004550;
-        public const int IMAGE_DIRECTORY_ENTRY_EXPORT = 0;
+        internal const uint TH32CS_SNAPMODULE = 0x00000008;
+        internal const uint TH32CS_SNAPMODULE32 = 0x00000010;
+        internal const uint TH32CS_SNAPPROCESS = 0x00000002;
+        internal const IntPtr INVALID_HANDLE_VALUE = (IntPtr)(-1);
+        internal const ushort IMAGE_DOS_SIGNATURE = 0x5A4D;
+        internal const uint IMAGE_NT_SIGNATURE = 0x00004550;
+        internal const int IMAGE_DIRECTORY_ENTRY_EXPORT = 0;
 
         // Constants for process access rights (complete set)
-        public const int PROCESS_CREATE_THREAD = 0x0002;
-        public const int PROCESS_CREATE_PROCESS = 0x0080;
+        internal const int PROCESS_CREATE_THREAD = 0x0002;
+        internal const int PROCESS_CREATE_PROCESS = 0x0080;
 
         // Previously defined constants for completeness:
-        public const int PROCESS_VM_READ = 0x0010;
-        public const int PROCESS_VM_WRITE = 0x0020;
-        public const int PROCESS_VM_OPERATION = 0x0008;
-        public const int PROCESS_QUERY_INFORMATION = 0x0400;
-        public const int PROCESS_ALL_ACCESS = 0x1F0FFF;
+        internal const int PROCESS_VM_READ = 0x0010;
+        internal const int PROCESS_VM_WRITE = 0x0020;
+        internal const int PROCESS_VM_OPERATION = 0x0008;
+        internal const int PROCESS_QUERY_INFORMATION = 0x0400;
+        internal const int PROCESS_ALL_ACCESS = 0x1F0FFF;
 
-        public const uint PAGE_NOACCESS = 0x01;
-        public const uint PAGE_READONLY = 0x02;
-        public const uint PAGE_READWRITE = 0x04;
-        public const uint PAGE_EXECUTE_READ = 0x20;
-        public const uint PAGE_EXECUTE_READWRITE = 0x40;
-        public const uint MEM_COMMIT = 0x1000;
-        public const uint STILL_ACTIVE = 259;
-        public const uint MEM_RESERVE = 0x00002000;
+        internal const uint PAGE_NOACCESS = 0x01;
+        internal const uint PAGE_READONLY = 0x02;
+        internal const uint PAGE_READWRITE = 0x04;
+        internal const uint PAGE_EXECUTE_READ = 0x20;
+        internal const uint PAGE_EXECUTE_READWRITE = 0x40;
+        internal const uint MEM_COMMIT = 0x1000;
+        internal const uint STILL_ACTIVE = 259;
+        internal const uint MEM_RESERVE = 0x00002000;
 
-        public const int LIST_MODULES_ALL = 0x03;
+        internal const int LIST_MODULES_ALL = 0x03;
 
-        public const uint GW_OWNER = 4;
-        public const int PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+        internal const uint GW_OWNER = 4;
+        internal const int PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
     
         /* CONSTANTES PARA OVERLAY */
-        public const int GWL_EXSTYLE = -20;
-        public const int GWL_STYLE = -16;
-        public const int WS_EX_LAYERED = 0x00080000;
-        public const int WS_EX_TRANSPARENT = 0x00000020;
-        public const int WS_CAPTION = 0x00C00000;
-        public const int WS_THICKFRAME = 0x00040000;
-        public const int LWA_COLORKEY = 0x00000001;
-        public const int SW_SHOW = 5;
-        public const int HWND_TOPMOST = -1;
-        public const int HWND_BOTTOM = 1;
+        internal const int GWL_EXSTYLE = -20;
+        internal const int GWL_STYLE = -16;
+        internal const int WS_EX_LAYERED = 0x00080000;
+        internal const int WS_EX_TRANSPARENT = 0x00000020;
+        internal const int WS_CAPTION = 0x00C00000;
+        internal const int WS_THICKFRAME = 0x00040000;
+        internal const int LWA_COLORKEY = 0x00000001;
+        internal const int SW_SHOW = 5;
+        internal const int HWND_TOPMOST = -1;
+        internal const int HWND_BOTTOM = 1;
 
 
         [DllImport("kernel32.dll")]
-        public static extern bool SetConsoleOutputCP(uint wCodePageID);
+        internal static extern bool SetConsoleOutputCP(uint wCodePageID);
 
         // API de kernel32 (optimizadas para NativeAOT)
         [DllImport("kernel32", SetLastError = true)]
-        public static extern IntPtr GetCurrentProcess();
+        internal static extern IntPtr GetCurrentProcess();
 
         [DllImport("kernel32.dll")]
-        public static extern uint GetCurrentProcessId();
+        internal static extern uint GetCurrentProcessId();
 
         [DllImport("kernel32", SetLastError = true)]
-        public static extern bool CloseHandle(IntPtr hObject);
+        internal static extern bool CloseHandle(IntPtr hObject);
 
         [DllImport("kernel32")]
-        public static extern IntPtr OpenProcess(
+        internal static extern IntPtr OpenProcess(
              uint dwDesiredAccess,
              [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle,
              uint dwProcessId);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, ref IMAGE_DOS_HEADER lpBuffer, int dwSize, IntPtr lpNumberOfBytesRead);
+        internal static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, ref IMAGE_DOS_HEADER lpBuffer, int dwSize, IntPtr lpNumberOfBytesRead);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, ref IMAGE_NT_HEADERS lpBuffer, int dwSize, IntPtr lpNumberOfBytesRead);
+        internal static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, ref IMAGE_NT_HEADERS lpBuffer, int dwSize, IntPtr lpNumberOfBytesRead);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, ref IMAGE_EXPORT_DIRECTORY lpBuffer, int dwSize, IntPtr lpNumberOfBytesRead);
+        internal static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, ref IMAGE_EXPORT_DIRECTORY lpBuffer, int dwSize, IntPtr lpNumberOfBytesRead);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, ref uint lpBuffer, int dwSize, IntPtr lpNumberOfBytesRead);
+        internal static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, ref uint lpBuffer, int dwSize, IntPtr lpNumberOfBytesRead);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, ref ushort lpBuffer, int dwSize, IntPtr lpNumberOfBytesRead);
+        internal static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, ref ushort lpBuffer, int dwSize, IntPtr lpNumberOfBytesRead);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, byte[] lpBuffer, int dwSize, IntPtr lpNumberOfBytesRead);
+        internal static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, byte[] lpBuffer, int dwSize, IntPtr lpNumberOfBytesRead);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern IntPtr VirtualAllocEx(
+        internal static extern IntPtr VirtualAllocEx(
             IntPtr hProcess,
             IntPtr lpAddress,
             UIntPtr dwSize,
@@ -102,10 +102,10 @@ namespace AvalonInjectLib
             uint flProtect);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, IntPtr lpBuffer, int nSize, IntPtr lpNumberOfBytesRead);
+        internal static extern bool ReadProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, IntPtr lpBuffer, int nSize, IntPtr lpNumberOfBytesRead);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool WriteProcessMemory(
+        internal static extern bool WriteProcessMemory(
          IntPtr hProcess,
          IntPtr lpBaseAddress,
          byte[] lpBuffer,
@@ -114,13 +114,13 @@ namespace AvalonInjectLib
 
         // En tu clase WinInterop o donde tengas tus imports
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool IsWow64Process(IntPtr hProcess, out bool wow64Process);
+        internal static extern bool IsWow64Process(IntPtr hProcess, out bool wow64Process);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool FlushInstructionCache(IntPtr hProcess, IntPtr lpBaseAddress, UIntPtr dwSize);
+        internal static extern bool FlushInstructionCache(IntPtr hProcess, IntPtr lpBaseAddress, UIntPtr dwSize);
 
         [DllImport("kernel32", SetLastError = true)]
-        public static extern bool WriteProcessMemory(
+        internal static extern bool WriteProcessMemory(
             IntPtr hProcess,
             IntPtr lpBaseAddress,
             void* lpBuffer,
@@ -128,7 +128,7 @@ namespace AvalonInjectLib
             out int lpNumberOfBytesWritten);
 
         [DllImport("kernel32", SetLastError = true)]
-        public static extern bool VirtualProtectEx(
+        internal static extern bool VirtualProtectEx(
             IntPtr hProcess,
             IntPtr lpAddress,
             uint dwSize,
@@ -136,25 +136,25 @@ namespace AvalonInjectLib
             out uint lpflOldProtect);
 
         [DllImport("kernel32", SetLastError = true)]
-        public static extern int VirtualQueryEx(
+        internal static extern int VirtualQueryEx(
             IntPtr hProcess,
             IntPtr lpAddress,
             out MEMORY_BASIC_INFORMATION lpBuffer,
             uint dwLength);
 
         [DllImport("kernel32", SetLastError = true)]
-        public static extern uint GetLastError();
+        internal static extern uint GetLastError();
 
         // API de user32 esenciales
         [DllImport("user32", SetLastError = true, CharSet = CharSet.Unicode)]
-        public static extern IntPtr FindWindowW(string lpClassName, string lpWindowName);
+        internal static extern IntPtr FindWindowW(string lpClassName, string lpWindowName);
 
         [DllImport("user32", SetLastError = true)]
-        public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+        internal static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
         // API de psapi para módulos
         [DllImport("psapi", SetLastError = true)]
-        public static extern bool EnumProcessModulesEx(
+        internal static extern bool EnumProcessModulesEx(
             IntPtr hProcess,
             IntPtr[] lphModule,
             uint cb,
@@ -162,28 +162,28 @@ namespace AvalonInjectLib
             int dwFilterFlag);
 
         [DllImport("psapi", CharSet = CharSet.Unicode, SetLastError = true)]
-        public static extern uint GetModuleFileNameExW(
+        internal static extern uint GetModuleFileNameExW(
             IntPtr hProcess,
             IntPtr hModule,
             StringBuilder lpFilename,
             int nSize);
 
         // Métodos de conveniencia
-        public static IntPtr OpenProcessWithFullAccess(uint processId)
+        internal static IntPtr OpenProcessWithFullAccess(uint processId)
         {
             return OpenProcess(PROCESS_ALL_ACCESS, false, processId);
         }
 
-        public static bool IsProcessRunning(IntPtr hProcess)
+        internal static bool IsProcessRunning(IntPtr hProcess)
         {
             return GetExitCodeProcess(hProcess, out uint exitCode) && exitCode == STILL_ACTIVE;
         }
 
         [DllImport("kernel32", SetLastError = true)]
-        public static extern bool GetExitCodeProcess(IntPtr hProcess, out uint lpExitCode);
+        internal static extern bool GetExitCodeProcess(IntPtr hProcess, out uint lpExitCode);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern IntPtr CreateThread(
+        internal static extern IntPtr CreateThread(
             IntPtr lpThreadAttributes,   // Seguridad del thread (NULL por defecto)
             uint dwStackSize,           // Tamaño de stack (0 = default)
             ThreadStart lpStartAddress,  // Puntero a función
@@ -192,7 +192,7 @@ namespace AvalonInjectLib
             out uint lpThreadId);       // ID del thread (salida)
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern IntPtr CreateRemoteThread(
+        internal static extern IntPtr CreateRemoteThread(
             IntPtr hProcess,
             IntPtr lpThreadAttributes,
             uint dwStackSize,
@@ -202,28 +202,28 @@ namespace AvalonInjectLib
             out uint lpThreadId);
 
         [DllImport("kernel32")]
-        public static extern bool DisableThreadLibraryCalls(IntPtr hModule);
+        internal static extern bool DisableThreadLibraryCalls(IntPtr hModule);
 
         [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
-        public static extern bool FreeConsole();
+        internal static extern bool FreeConsole();
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool AttachConsole(int dwProcessId);
+        internal static extern bool AttachConsole(int dwProcessId);
 
         [DllImport("kernel32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool AllocConsole();
+        internal static extern bool AllocConsole();
 
         [DllImport("kernel32")]
-        public static extern void Sleep(uint dwMilliseconds);
+        internal static extern void Sleep(uint dwMilliseconds);
 
 
         /* API FUNCTIONS */
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern ushort RegisterClassEx(ref WNDCLASSEX lpwcx);
+        internal static extern ushort RegisterClassEx(ref WNDCLASSEX lpwcx);
 
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern IntPtr CreateWindowEx(
+        internal static extern IntPtr CreateWindowEx(
             int dwExStyle,
             string lpClassName,
             string lpWindowName,
@@ -238,32 +238,32 @@ namespace AvalonInjectLib
             IntPtr lpParam);
 
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+        internal static extern int GetWindowLong(IntPtr hWnd, int nIndex);
 
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+        internal static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern bool SetLayeredWindowAttributes(
+        internal static extern bool SetLayeredWindowAttributes(
             IntPtr hwnd,
             uint crKey,
             byte bAlpha,
             uint dwFlags);
 
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+        internal static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern bool UpdateWindow(IntPtr hWnd);
+        internal static extern bool UpdateWindow(IntPtr hWnd);
 
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+        internal static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
+        internal static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT lpwndpl);
 
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern bool SetWindowPos(
+        internal static extern bool SetWindowPos(
             IntPtr hWnd,
             IntPtr hWndInsertAfter,
             int X,
@@ -273,7 +273,7 @@ namespace AvalonInjectLib
             uint uFlags);
 
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern bool MoveWindow(
+        internal static extern bool MoveWindow(
             IntPtr hWnd,
             int X,
             int Y,
@@ -282,90 +282,97 @@ namespace AvalonInjectLib
             bool bRepaint);
 
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern IntPtr DefWindowProc(
+        internal static extern IntPtr DefWindowProc(
             IntPtr hWnd,
             uint uMsg,
             IntPtr wParam,
             IntPtr lParam);
 
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern bool PostQuitMessage(int nExitCode);
+        internal static extern bool PostQuitMessage(int nExitCode);
 
         [DllImport("kernel32")]
-        public static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
+        internal static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
 
         [DllImport("kernel32")]
-        public static extern bool Module32First(IntPtr hSnapshot, ref MODULEENTRY32 lpme);
+        internal static extern bool Module32First(IntPtr hSnapshot, ref MODULEENTRY32 lpme);
         
         [DllImport("kernel32")]
-        public static extern bool Module32Next(IntPtr hSnapshot, ref MODULEENTRY32 lpme);
+        internal static extern bool Module32Next(IntPtr hSnapshot, ref MODULEENTRY32 lpme);
 
         [DllImport("kernel32")]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool Process32First(IntPtr hSnapshot, ref PROCESSENTRY32 lppe);
+        internal static extern bool Process32First(IntPtr hSnapshot, ref PROCESSENTRY32 lppe);
 
         [DllImport("kernel32")]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool Process32Next(IntPtr hSnapshot, ref PROCESSENTRY32 lppe);
+        internal static extern bool Process32Next(IntPtr hSnapshot, ref PROCESSENTRY32 lppe);
 
         [DllImport("kernel32", EntryPoint = "Module32FirstW", CharSet = CharSet.Unicode)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool Module32FirstW(
+        internal static extern bool Module32FirstW(
        IntPtr hSnapshot,
        ref MODULEENTRY32W lpme);
 
         [DllImport("kernel32", EntryPoint = "Module32NextW", CharSet = CharSet.Unicode)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool Module32NextW(
+        internal static extern bool Module32NextW(
             IntPtr hSnapshot,
             ref MODULEENTRY32W lpme);
 
         [DllImport("kernel32", EntryPoint = "Process32FirstW", CharSet = CharSet.Unicode)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool Process32FirstW(
+        internal static extern bool Process32FirstW(
             IntPtr hSnapshot,
             ref PROCESSENTRY32W lppe);
 
         [DllImport("kernel32", EntryPoint = "Process32NextW", CharSet = CharSet.Unicode)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool Process32NextW(
+        internal static extern bool Process32NextW(
             IntPtr hSnapshot,
             ref PROCESSENTRY32W lppe);
 
         [DllImport("user32.dll")]
-        public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+        internal static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
         [DllImport("user32.dll")]
-        public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+        internal static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
 
         [DllImport("user32.dll")]
-        public static extern bool IsWindowVisible(IntPtr hWnd);
+        internal static extern bool IsWindowVisible(IntPtr hWnd);
 
         [DllImport("user32.dll")]
-        public static extern IntPtr GetParent(IntPtr hWnd);
+        internal static extern IntPtr GetParent(IntPtr hWnd);
 
         [DllImport("user32.dll")]
-        public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+        internal static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
 
         [DllImport("user32.dll")]
-        public static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+        internal static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
 
-        public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+        internal delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool VirtualProtect(IntPtr lpAddress, UIntPtr dwSize, uint flNewProtect, out uint lpflOldProtect);
+        internal static extern bool VirtualProtect(IntPtr lpAddress, UIntPtr dwSize, uint flNewProtect, out uint lpflOldProtect);
 
         [DllImport("opengl32.dll", EntryPoint = "wglGetProcAddress")]
-        public static extern IntPtr wglGetProcAddress(string procName);
+        internal static extern IntPtr wglGetProcAddress(string procName);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool FreeLibrary(IntPtr hModule);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        internal static extern void FreeLibraryAndExitThread(IntPtr hModule, uint dwExitCode);
 
         /* HELPER METHODS */
-        public static void SetWindowTransparency(IntPtr hWnd, uint colorKey)
+        internal static void SetWindowTransparency(IntPtr hWnd, uint colorKey)
         {
             SetWindowLong(hWnd, GWL_EXSTYLE, GetWindowLong(hWnd, GWL_EXSTYLE) | WS_EX_LAYERED);
             SetLayeredWindowAttributes(hWnd, colorKey, 0, LWA_COLORKEY);
         }
 
-        public static void MakeClickThrough(IntPtr hWnd)
+        internal static void MakeClickThrough(IntPtr hWnd)
         {
             int style = GetWindowLong(hWnd, GWL_EXSTYLE);
             SetWindowLong(hWnd, GWL_EXSTYLE, style | WS_EX_TRANSPARENT | WS_EX_LAYERED);
@@ -376,7 +383,7 @@ namespace AvalonInjectLib
         /// </summary>
         /// <param name="processName">Nombre del proceso (con o sin .exe)</param>
         /// <returns>Process ID o 0 si no se encuentra</returns>
-        public static uint FindProcessId(string processName)
+        internal static uint FindProcessId(string processName)
         {
             if (string.IsNullOrEmpty(processName))
                 return 0;
@@ -402,22 +409,20 @@ namespace AvalonInjectLib
 
                 if (!Process32FirstW(snapshot, ref processEntry))
                 {
-                    Debug.WriteLine($"Error en Process32FirstW: {GetLastError()}");
+                    Console.WriteLine($"Error en Process32FirstW: {GetLastError()}");
                     return 0;
                 }
 
                 do
                 {
                     // Comparación más robusta con validación de string
-                    if (!string.IsNullOrEmpty(processEntry.szExeFile) &&
-                        string.Equals(processEntry.szExeFile, processName, StringComparison.OrdinalIgnoreCase))
+                    if (!string.IsNullOrEmpty(processEntry.szExeFile) && string.Equals(processEntry.szExeFile, processName, StringComparison.OrdinalIgnoreCase))
                     {
-                        Debug.WriteLine($"Proceso encontrado: {processEntry.szExeFile} (PID: {processEntry.th32ProcessID})");
                         return processEntry.th32ProcessID;
                     }
                 } while (Process32NextW(snapshot, ref processEntry));
 
-                Debug.WriteLine($"Proceso '{processName}' no encontrado");
+                Console.WriteLine($"Proceso '{processName}' no encontrado");
                 return 0;
             }
             finally
@@ -427,11 +432,10 @@ namespace AvalonInjectLib
         }
 
         // ================= FUNCIONES AUXILIARES PARA PROCESOS EXTERNOS =================
-        public static IntPtr GetModuleBaseEx(uint processId, string moduleName)
+        internal static IntPtr GetModuleBaseEx(uint processId, string moduleName = null)
         {
             try
             {
-                // Crear snapshot de módulos del proceso
                 IntPtr hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, processId);
                 if (hSnapshot == INVALID_HANDLE_VALUE)
                     return IntPtr.Zero;
@@ -439,21 +443,31 @@ namespace AvalonInjectLib
                 MODULEENTRY32 moduleEntry = new MODULEENTRY32();
                 moduleEntry.dwSize = (uint)Marshal.SizeOf(moduleEntry);
 
-                // Iterar a través de los módulos
+                IntPtr mainModuleBase = IntPtr.Zero;
+                bool found = false;
+
                 if (Module32First(hSnapshot, ref moduleEntry))
                 {
                     do
                     {
-                        if (string.Equals(moduleEntry.szModule, moduleName, StringComparison.OrdinalIgnoreCase))
+                        // Si no se especificó moduleName, devolver el primer módulo (el ejecutable principal)
+                        if (string.IsNullOrEmpty(moduleName))
                         {
-                            CloseHandle(hSnapshot);
-                            return moduleEntry.modBaseAddr;
+                            mainModuleBase = moduleEntry.modBaseAddr;
+                            found = true;
+                            break;
+                        }
+                        else if (string.Equals(moduleEntry.szModule, moduleName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            mainModuleBase = moduleEntry.modBaseAddr;
+                            found = true;
+                            break;
                         }
                     } while (Module32Next(hSnapshot, ref moduleEntry));
                 }
 
                 CloseHandle(hSnapshot);
-                return IntPtr.Zero;
+                return found ? mainModuleBase : IntPtr.Zero;
             }
             catch
             {
@@ -461,7 +475,7 @@ namespace AvalonInjectLib
             }
         }
 
-        public static IntPtr GetProcAddressEx(IntPtr hProcess, IntPtr hModule, string procName)
+        internal static IntPtr GetProcAddressEx(IntPtr hProcess, IntPtr hModule, string procName)
         {
             const int IMAGE_DOS_SIGNATURE = 0x5A4D;      // "MZ"
             const int IMAGE_NT_SIGNATURE = 0x00004550;   // "PE\0\0"
@@ -620,7 +634,7 @@ namespace AvalonInjectLib
         /// Lista todos los procesos en ejecución (útil para debugging)
         /// </summary>
         /// <returns>Lista de nombres de procesos</returns>
-        public static string[] ListRunningProcesses()
+        internal static string[] ListRunningProcesses()
         {
             var processes = new System.Collections.Generic.List<string>();
 
@@ -655,7 +669,7 @@ namespace AvalonInjectLib
             return processes.ToArray();
         }
 
-        public static IntPtr FindGameWindow(uint processId)
+        internal static IntPtr FindGameWindow(uint processId)
         {
             // Opción 1: Buscar por nombre de ventana si lo conoces
             IntPtr gameWindow = FindWindow(null, "AssaultCube"); // Cambia por el título real
@@ -710,7 +724,7 @@ namespace AvalonInjectLib
         /// </summary>
         /// <param name="processId">ID del proceso</param>
         /// <returns>Lista de nombres de módulos</returns>
-        public static string[] ListProcessModules(uint processId)
+        internal static string[] ListProcessModules(uint processId)
         {
             var modules = new System.Collections.Generic.List<string>();
 
@@ -742,7 +756,7 @@ namespace AvalonInjectLib
             return modules.ToArray();
         }
 
-        public static IntPtr CalculatePointer(IntPtr baseAddress, params int[] offsets)
+        internal static IntPtr CalculatePointer(IntPtr baseAddress, params int[] offsets)
         {
             long current = baseAddress.ToInt64();
 
@@ -760,7 +774,7 @@ namespace AvalonInjectLib
         }
 
 
-        public static void ExecuteRemoteFunction(IntPtr hProcess, IntPtr funcAddress, int parameter)
+        internal static void ExecuteRemoteFunction(IntPtr hProcess, IntPtr funcAddress, int parameter)
         {
             IntPtr threadHandle = CreateRemoteThread(
                 hProcess,
@@ -776,11 +790,13 @@ namespace AvalonInjectLib
         }
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool VirtualFreeEx(
+        internal static extern bool VirtualFreeEx(
      IntPtr hProcess,          // Handle al proceso objetivo
      IntPtr lpAddress,         // Dirección de memoria a liberar
      UIntPtr dwSize,           // Tamaño de la región (0 para MEM_RELEASE)
      uint dwFreeType           // Tipo de liberación (MEM_RELEASE = 0x8000)
  );
+
+   
     }
 }

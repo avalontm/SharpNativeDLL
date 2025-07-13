@@ -2,7 +2,7 @@
 using System.Runtime.InteropServices;
 using System.Threading;
 
-public static class KeyboardMonitor
+internal static class KeyboardMonitor
 {
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);
@@ -21,15 +21,15 @@ public static class KeyboardMonitor
     // Estados mejorados con temporización
     private struct KeyState
     {
-        public bool CurrentState;
-        public bool PreviousState;
-        public long LastChangeTime;
+        internal bool CurrentState;
+        internal bool PreviousState;
+        internal long LastChangeTime;
     }
 
     private static KeyState[] _keyStates = new KeyState[256];
     private const int DEBOUNCE_TIME_MS = 20; // Tiempo mínimo entre cambios de estado
 
-    public static void StartMonitoring(uint targetProcessId, Action<int, bool> onKeyEvent)
+    internal static void StartMonitoring(uint targetProcessId, Action<int, bool> onKeyEvent)
     {
         if (_isMonitoring) return;
 
@@ -46,7 +46,7 @@ public static class KeyboardMonitor
         _monitorThread.Start();
     }
 
-    public static void StopMonitoring()
+    internal static void StopMonitoring()
     {
         _isMonitoring = false;
         _monitorThread?.Join(100);

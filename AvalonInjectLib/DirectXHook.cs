@@ -3,20 +3,20 @@ using static AvalonInjectLib.Structs;
 
 namespace AvalonInjectLib
 {
-    public unsafe class DirectXHook
+    internal unsafe class DirectXHook
     {
         [StructLayout(LayoutKind.Sequential)]
         private struct DXVertex
         {
-            public float X, Y;
-            public float R, G, B, A;
+            internal float X, Y;
+            internal float R, G, B, A;
         }
 
         private static IntPtr _device;
         private static IntPtr _context;
         private static IntPtr _vertexBuffer;
 
-        public static void Initialize(IntPtr swapChain)
+        internal static void Initialize(IntPtr swapChain)
         {
             // Obtener device y context desde el swapchain
             var vtbl = Marshal.ReadIntPtr(swapChain);
@@ -48,7 +48,7 @@ namespace AvalonInjectLib
         }
 
 
-        public static void DrawRect(float x, float y, float w, float h, UIFramework.Color color)
+        internal static void DrawRect(float x, float y, float w, float h, Color color)
         {
             var vertices = new DXVertex[4]
             {
@@ -84,14 +84,24 @@ namespace AvalonInjectLib
             draw(_context, 4, 0);
         }
 
-        public static void DrawText(string text, Vector2 vector2, Color color, float v)
+        internal static void DrawText(string text, Vector2 vector2, Color color, float v)
         {
 
         }
 
-        public static void SetRenderCallback(Action render)
+        internal static void AddRenderCallback(Action render)
         {
 
+        }
+
+        internal static void DrawLine(Vector2 startPoint, Vector2 endPoint, float thickness, Color apiColor)
+        {
+            throw new NotImplementedException();
+        }
+
+        internal static void DrawCircle(Vector2 center, float radius, int segments, float thinkness, Color apiColor)
+        {
+            throw new NotImplementedException();
         }
     }
 }
