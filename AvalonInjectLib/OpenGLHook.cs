@@ -66,6 +66,7 @@ namespace AvalonInjectLib
         internal static bool Initialized => _initialized;
         internal static int ScreenWidth => _screenWidth;
         internal static int ScreenHeight => _screenHeight;
+        internal static int[] _savedViewport = new int[4];
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool VirtualProtect(IntPtr lpAddress, uint dwSize, uint flNewProtect, out uint lpflOldProtect);
@@ -373,33 +374,52 @@ namespace AvalonInjectLib
 
         private static void SetupRendering()
         {
-            //Obtener dimensiones del viewport
+            // Guardar todos los estados relevantes que vamos a modificar
+            OpenGLInterop.glPushAttrib(GL_ALL_ATTRIB_BITS); // Guarda todos los atributos
+            OpenGLInterop.glGetIntegerv(GL_VIEWPORT, _savedViewport);
+
+            // Guardar matrices actuales
+            OpenGLInterop.glMatrixMode(GL_PROJECTION);
+            OpenGLInterop.glPushMatrix();
+            OpenGLInterop.glMatrixMode(GL_MODELVIEW);
+            OpenGLInterop.glPushMatrix();
+
+            // Obtener dimensiones actuales del viewport
             int[] viewport = new int[4];
             OpenGLInterop.glGetIntegerv(GL_VIEWPORT, viewport);
-
             _screenWidth = viewport[2];
             _screenHeight = viewport[3];
 
+            // Configurar proyección ortográfica 2D
             OpenGLInterop.glMatrixMode(GL_PROJECTION);
             OpenGLInterop.glLoadIdentity();
-
-            //Configurar proyección ortográfica 2D
             OpenGLInterop.glOrtho(0, _screenWidth, _screenHeight, 0, -1, 1);
 
-            //Configurar matriz modelo-vista
+            // Configurar matriz modelo-vista
             OpenGLInterop.glMatrixMode(GL_MODELVIEW);
             OpenGLInterop.glLoadIdentity();
 
-            //Estados básicos para overlay 2D
+            // Estados básicos para overlay 2D
             OpenGLInterop.glDisable(GL_DEPTH_TEST);
-            OpenGLInterop.glEnable(OpenGLInterop.GL_BLEND);
-            OpenGLInterop.glBlendFunc(OpenGLInterop.GL_SRC_ALPHA, OpenGLInterop.GL_ONE_MINUS_SRC_ALPHA);
+            OpenGLInterop.glEnable(GL_BLEND);
+            OpenGLInterop.glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             OpenGLInterop.glDisable(GL_LIGHTING);
+            OpenGLInterop.glDisable(GL_TEXTURE_2D); // Importante para overlays simples
         }
 
         private static void RestoreRendering()
         {
-            OpenGLInterop.glEnable(GL_DEPTH_TEST);
+            // Restaurar matrices
+            OpenGLInterop.glMatrixMode(GL_PROJECTION);
+            OpenGLInterop.glPopMatrix();
+            OpenGLInterop.glMatrixMode(GL_MODELVIEW);
+            OpenGLInterop.glPopMatrix();
+
+            // Restaurar atributos
+            OpenGLInterop.glPopAttrib();
+
+            // Restaurar viewport específicamente (por si acaso)
+            OpenGLInterop.glViewport(_savedViewport[0], _savedViewport[1], _savedViewport[2], _savedViewport[3]);
         }
 
         internal static void Cleanup()

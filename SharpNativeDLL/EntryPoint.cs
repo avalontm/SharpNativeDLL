@@ -97,7 +97,10 @@ namespace AssaultCube
 
         private static void FindGameProcess()
         {
-            process = ProcessManager.Create("ac_client.exe");
+            var info = InjectionInfo.GetCurrentProcessInfo();
+            Logger.Info($"ProcessName: {info.ProcessName}");
+
+            process = ProcessManager.Create(info.ProcessName);
 
             if (process == null)
             {
@@ -108,7 +111,7 @@ namespace AssaultCube
             Logger.Info($"Handle encontrado - Handle: {process.Handle:X8}", "EntryPoint");
             Logger.Info($"Modulo Base - moduleBase: {process.ModuleBase:X8}", "EntryPoint");
 
-            MemoryUpdate();
+            //MemoryUpdate();
 
             Renderer.CurrentAPI = Renderer.GraphicsAPI.OpenGL;
             Renderer.InitializeGraphics(process.ProcessId);

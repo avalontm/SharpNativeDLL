@@ -1,9 +1,13 @@
-﻿using static AvalonInjectLib.Structs;
+﻿
+using static AvalonInjectLib.Structs;
 
 namespace AvalonInjectLib
 {
     public static class Renderer
     {
+        private static Stack<ViewMatrix> _transformStack = new Stack<ViewMatrix>();
+        private static ViewMatrix _currentTransform = ViewMatrix.Identity;
+
         public enum GraphicsAPI
         {
             None, OpenGL, DirectX,
@@ -87,6 +91,11 @@ namespace AvalonInjectLib
             }
         }
 
+        public static void DrawRect(Rect bounds, UIFramework.Color color)
+        {
+            DrawRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, color);
+        }
+
         public static void DrawText(string text, float x, float y, UIFramework.Color color, int size = 24)
         {
             // Convertir color al formato específico de la API
@@ -117,7 +126,8 @@ namespace AvalonInjectLib
 
         public static Vector2 MeasureText(string text, float size)
         {
-            return new Vector2();
+            var (X, Y) = FontRenderer.MeasureText(text, FontRenderer.GetScaleForDesiredSize(size));
+            return new Vector2(X, Y);
         }
 
         public static void DrawLine(float x1, float y1, float x2, float y2, float thickness, UIFramework.Color color)
@@ -141,6 +151,11 @@ namespace AvalonInjectLib
             {
                 DirectXHook.DrawLine(startPoint, endPoint, thickness, apiColor);
             }
+        }
+
+        public static void DrawLine(Vector2 vector21, Vector2 vector22, float thickness, UIFramework.Color color)
+        {
+            DrawLine(vector21.X, vector21.Y, vector22.X, vector22.Y, thickness, color);
         }
 
         // Sobrecarga para mantener compatibilidad con el código C original
@@ -186,6 +201,69 @@ namespace AvalonInjectLib
         }
 
         public static void Shutdown()
+        {
+           
+        }
+
+        public static Vector2 GetScreenSize()
+        {
+            if (CurrentAPI == GraphicsAPI.OpenGL)
+            {
+                return new Vector2(OpenGLHook.ScreenWidth, OpenGLHook.ScreenHeight);
+            }
+            else
+            {
+                return default(Vector2);
+            }
+        }
+
+        internal static void DrawTriangle(float v1, float v2, float v3, float v4, float v5, float v6, UIFramework.Color color)
+        {
+            
+        }
+
+        internal static void DrawTriangle(Vector2 vector21, Vector2 vector22, Vector2 vector23, UIFramework.Color arrowColor)
+        {
+          
+        }
+
+        internal static void PushClip(Rect contentRect)
+        {
+          
+        }
+
+        internal static void PopClip()
+        {
+          
+        }
+
+        internal static void DrawBorder(float x, float y, float width, float height, float borderThickness, UIFramework.Color borderColor)
+        {
+          
+        }
+
+        internal static Vector2 TransformPoint(float x, float y)
+        {
+            Vector4 point = new Vector4(x, y, 0, 1);
+            Vector4 transformed = Vector4.Transform(point, _currentTransform);
+            return new Vector2(transformed.X, transformed.Y);
+        }
+
+        internal static void PushTransform(float x, float y)
+        {
+            _transformStack.Push(_currentTransform);
+            _currentTransform *= ViewMatrix.CreateTranslation(x, y, 0);
+        }
+
+        internal static void PopTransform()
+        {
+            if (_transformStack.Count > 0)
+            {
+                _currentTransform = _transformStack.Pop();
+            }
+        }
+
+        internal static void DrawRectOutline(Rect bounds, UIFramework.Color borderColor, float borderThickness)
         {
            
         }

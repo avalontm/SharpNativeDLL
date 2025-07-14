@@ -1,4 +1,7 @@
-﻿namespace AvalonInjectLib
+﻿using AvalonInjectLib.UIFramework;
+using static AvalonInjectLib.Structs;
+
+namespace AvalonInjectLib
 {
     public static class Extentions
     {
@@ -11,5 +14,14 @@
             return string.Format("0x{0:X}", str.ToString());
         }
 
+        public static Vector2 Subtract(this Vector2 vector, Thickness thickness)
+        {
+            return vector.Subtract(thickness);
+        }
+
+        public static Rect ApplyMargin(this Rect rect, Thickness margin)
+        {
+            return rect.ApplyMargin(margin);
+        }
     }
 }

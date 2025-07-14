@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using AvalonInjectLib.UIFramework;
+using System.Numerics;
 using System.Runtime.InteropServices;
 
 namespace AvalonInjectLib
@@ -6,12 +7,6 @@ namespace AvalonInjectLib
     public static class Structs
     {
         public delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
-
-        public enum KeyState
-        {
-            Pressed = 0x8000,
-            Toggled = 0x0001
-        }
 
         [Flags]
         public enum MouseButtons
@@ -193,31 +188,166 @@ namespace AvalonInjectLib
                     M31, M32, M33, M34,
                     M41, M42, M43, M44);
             }
+
+            /// <summary>
+            /// Creates a translation matrix
+            /// </summary>
+            /// <param name="x">X translation</param>
+            /// <param name="y">Y translation</param>
+            /// <param name="z">Z translation (default 0 for 2D)</param>
+            /// <returns>Translation matrix</returns>
+            public static ViewMatrix CreateTranslation(float x, float y, float z = 0f)
+            {
+                return new ViewMatrix
+                {
+                    M11 = 1.0f,
+                    M12 = 0.0f,
+                    M13 = 0.0f,
+                    M14 = 0.0f,
+                    M21 = 0.0f,
+                    M22 = 1.0f,
+                    M23 = 0.0f,
+                    M24 = 0.0f,
+                    M31 = 0.0f,
+                    M32 = 0.0f,
+                    M33 = 1.0f,
+                    M34 = 0.0f,
+                    M41 = x,
+                    M42 = y,
+                    M43 = z,
+                    M44 = 1.0f
+                };
+            }
+
+            /// <summary>
+            /// Multiplies two matrices (this * other)
+            /// </summary>
+            public static ViewMatrix operator *(ViewMatrix a, ViewMatrix b)
+            {
+                return new ViewMatrix
+                {
+                    M11 = a.M11 * b.M11 + a.M12 * b.M21 + a.M13 * b.M31 + a.M14 * b.M41,
+                    M12 = a.M11 * b.M12 + a.M12 * b.M22 + a.M13 * b.M32 + a.M14 * b.M42,
+                    M13 = a.M11 * b.M13 + a.M12 * b.M23 + a.M13 * b.M33 + a.M14 * b.M43,
+                    M14 = a.M11 * b.M14 + a.M12 * b.M24 + a.M13 * b.M34 + a.M14 * b.M44,
+
+                    M21 = a.M21 * b.M11 + a.M22 * b.M21 + a.M23 * b.M31 + a.M24 * b.M41,
+                    M22 = a.M21 * b.M12 + a.M22 * b.M22 + a.M23 * b.M32 + a.M24 * b.M42,
+                    M23 = a.M21 * b.M13 + a.M22 * b.M23 + a.M23 * b.M33 + a.M24 * b.M43,
+                    M24 = a.M21 * b.M14 + a.M22 * b.M24 + a.M23 * b.M34 + a.M24 * b.M44,
+
+                    M31 = a.M31 * b.M11 + a.M32 * b.M21 + a.M33 * b.M31 + a.M34 * b.M41,
+                    M32 = a.M31 * b.M12 + a.M32 * b.M22 + a.M33 * b.M32 + a.M34 * b.M42,
+                    M33 = a.M31 * b.M13 + a.M32 * b.M23 + a.M33 * b.M33 + a.M34 * b.M43,
+                    M34 = a.M31 * b.M14 + a.M32 * b.M24 + a.M33 * b.M34 + a.M34 * b.M44,
+
+                    M41 = a.M41 * b.M11 + a.M42 * b.M21 + a.M43 * b.M31 + a.M44 * b.M41,
+                    M42 = a.M41 * b.M12 + a.M42 * b.M22 + a.M43 * b.M32 + a.M44 * b.M42,
+                    M43 = a.M41 * b.M13 + a.M42 * b.M23 + a.M43 * b.M33 + a.M44 * b.M43,
+                    M44 = a.M41 * b.M14 + a.M42 * b.M24 + a.M43 * b.M34 + a.M44 * b.M44
+                };
+            }
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        public struct Vector2
+        public struct Vector2 : IEquatable<Vector2>
         {
             public float X;
             public float Y;
 
             public Vector2(float x, float y)
             {
-                this.X = x; this.Y = y;
+                this.X = x;
+                this.Y = y;
             }
 
-            public override string ToString()
+            public Vector2(float value)
             {
-                return $"({X:F2}, {Y:F2})";
+                this.X = value;
+                this.Y = value;
             }
 
-            public static Vector2 Zero = new Vector2();
+            public static Vector2 Zero => new Vector2(0f);
+            public static Vector2 One => new Vector2(1f);
+            public static Vector2 UnitX => new Vector2(1f, 0f);
+            public static Vector2 UnitY => new Vector2(0f, 1f);
+            public static Vector2 PositiveInfinity => new Vector2(float.PositiveInfinity);
+            public static Vector2 NegativeInfinity => new Vector2(float.NegativeInfinity);
+
+            public bool IsInfinity => float.IsInfinity(X) || float.IsInfinity(Y);
+            public bool IsPositiveInfinity => float.IsPositiveInfinity(X) && float.IsPositiveInfinity(Y);
+            public bool IsNegativeInfinity => float.IsNegativeInfinity(X) && float.IsNegativeInfinity(Y);
+            public bool IsFinite => !float.IsInfinity(X) && !float.IsInfinity(Y);
+
+            public override string ToString() => $"({X:F2}, {Y:F2})";
+
+            public override bool Equals(object obj) => obj is Vector2 other && Equals(other);
+
+            public bool Equals(Vector2 other) => X == other.X && Y == other.Y;
+
+            public override int GetHashCode() => HashCode.Combine(X, Y);
+
+            public static bool operator ==(Vector2 left, Vector2 right) => left.Equals(right);
+            public static bool operator !=(Vector2 left, Vector2 right) => !left.Equals(right);
+
+            public static Vector2 operator +(Vector2 left, Vector2 right) =>
+                new Vector2(left.X + right.X, left.Y + right.Y);
+
+            public static Vector2 operator -(Vector2 left, Vector2 right) =>
+                new Vector2(left.X - right.X, left.Y - right.Y);
+
+            public static Vector2 operator *(Vector2 left, Vector2 right) =>
+                new Vector2(left.X * right.X, left.Y * right.Y);
+
+            public static Vector2 operator *(Vector2 left, float right) =>
+                new Vector2(left.X * right, left.Y * right);
+
+            public static Vector2 operator /(Vector2 left, Vector2 right) =>
+                new Vector2(left.X / right.X, left.Y / right.Y);
+
+            public static Vector2 operator /(Vector2 left, float right) =>
+                new Vector2(left.X / right, left.Y / right);
+
+            public static Vector2 operator -(Vector2 value) =>
+                new Vector2(-value.X, -value.Y);
+
+            // Métodos útiles para UI
+            public Vector2 Max(Vector2 other) =>
+                new Vector2(Math.Max(X, other.X), Math.Max(Y, other.Y));
+
+            public Vector2 Min(Vector2 other) =>
+                new Vector2(Math.Min(X, other.X), Math.Min(Y, other.Y));
+
+            public Vector2 Clamp(Vector2 min, Vector2 max) =>
+                new Vector2(
+                    Math.Clamp(X, min.X, max.X),
+                    Math.Clamp(Y, min.Y, max.Y)
+                );
+
+            public Vector2 Abs() =>
+                new Vector2(Math.Abs(X), Math.Abs(Y));
+
+            public float Length() =>
+                (float)Math.Sqrt(X * X + Y * Y);
+
+            public float LengthSquared() =>
+                X * X + Y * Y;
+
+            // Método específico para tu caso de uso en Measure()
+            public Vector2 SubtractMargins(Thickness margin) =>
+                new Vector2(
+                    Math.Max(0, X - margin.Left - margin.Right),
+                    Math.Max(0, Y - margin.Top - margin.Bottom)
+                );
         }
 
         [StructLayout(LayoutKind.Sequential)]
         public struct Rect
         {
-            public float X, Y, Width, Height;
+            public float X {set;get;}
+            public float Y {set;get;}
+            public float Width {set;get;}
+            public float Height {set;get;}
 
             public bool Contains(float px, float py) =>
                 px >= X && px <= X + Width && py >= Y && py <= Y + Height;
@@ -236,6 +366,47 @@ namespace AvalonInjectLib
             public Vector2 Position => new Vector2(X, Y);
             public Vector2 Size => new Vector2(Width, Height);
             public Vector2 Center => new Vector2(X + Width / 2, Y + Height / 2);
+
+            public static readonly Rect Empty = new Rect(0, 0, 0, 0);
+
+            /// <summary>
+            /// Resta un Thickness de este Vector2, restando los márgenes izquierdo/derecho de X
+            /// y los márgenes superior/inferior de Y. Los valores resultantes no serán menores que 0.
+            /// </summary>
+            /// <param name="thickness">El Thickness a restar</param>
+            /// <returns>Nuevo Vector2 con los valores restados</returns>
+            public Vector2 Subtract(Thickness thickness)
+            {
+                return new Vector2(
+                    Math.Max(0, X - thickness.Left - thickness.Right),
+                    Math.Max(0, Y - thickness.Top - thickness.Bottom)
+                );
+            }
+
+            /// <summary>
+            /// Aplica márgenes al rectángulo, reduciendo su tamaño y ajustando su posición
+            /// </summary>
+            /// <param name="margin">Thickness con los márgenes a aplicar</param>
+            /// <returns>Nuevo Rect con los márgenes aplicados</returns>
+            public Rect ApplyMargin(Thickness margin)
+            {
+                float newX = X + margin.Left;
+                float newY = Y + margin.Top;
+                float newWidth = Math.Max(0, Width - margin.Left - margin.Right);
+                float newHeight = Math.Max(0, Height - margin.Top - margin.Bottom);
+
+                return new Rect(newX, newY, newWidth, newHeight);
+            }
+
+            public override string ToString()
+            {
+                return $"[{X}, {Y}, {Width}, {Height}]";
+            }
+
+            internal bool Contains(Vector2 mousePos)
+            {
+                return this.Contains(mousePos.X, mousePos.Y);
+            }
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -697,13 +868,6 @@ namespace AvalonInjectLib
             int startVertexLocation);
     }
 
-    public enum KeyState
-    {
-        Pressed,    // Tecla acaba de ser presionada (primer frame)
-        Holding,    // Tecla está siendo mantenida
-        Released,   // Tecla acaba de ser liberada
-        Up          // Tecla no está presionada
-    }
 
     public enum MouseButtons
     {

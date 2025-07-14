@@ -9,13 +9,13 @@ namespace AvalonInjectLib
             return WinInterop.OpenProcess(WinInterop.PROCESS_ALL_ACCESS, false, processId);
         }
 
-        public static ProcessEntry Create(string processName)
+        public static ProcessEntry Create(string processName, string moduleName = null)
         {
             ProcessEntry moduleProcess = null;
 
             var processId = Find(processName);
             var hProcess = Open(processId);
-            var moduleBase = Module(processId, "ac_client.exe");
+            var moduleBase = Module(processId, moduleName);
 
             if (processId > 0 && hProcess != IntPtr.Zero && moduleBase != IntPtr.Zero)
             {
