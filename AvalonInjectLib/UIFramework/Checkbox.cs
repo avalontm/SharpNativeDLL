@@ -1,23 +1,22 @@
-﻿namespace AvalonInjectLib.UIFramework
+﻿using static AvalonInjectLib.Structs;
+using System;
+using System.Transactions;
+
+namespace AvalonInjectLib.UIFramework
 {
-    using static AvalonInjectLib.Structs;
-
-    public class Checkbox : UIControl
+    public class CheckBox : UIControl
     {
-        // Propiedades básicas
-        private bool _isChecked = false;
-        public string Text { get; set; } = "";
-        public Color CheckColor { get; set; } = new Color(0, 120, 215);
-        public Color BoxColor { get; set; } = new Color(120, 120, 120);
-        public Color HoverColor { get; set; } = new Color(150, 150, 150);
-        public float BoxSize { get; set; } = 16f;
-        public float TextSpacing { get; set; } = 5f;
-        public float BorderThickness { get; set; } = 1f;
+        // Constantes para el diseño
+        private const float BOX_SIZE = 16f;
+        private const float TEXT_SPACING = 5f;
 
-        // Evento
-        public Action<bool> OnCheckedChanged;
+        // Estados
+        private bool _isChecked;
+        private bool _isHovered;
+        private bool _isPressed;
 
-        public bool IsChecked
+        // Propiedades
+        public bool Checked
         {
             get => _isChecked;
             set
@@ -25,87 +24,122 @@
                 if (_isChecked != value)
                 {
                     _isChecked = value;
-                    OnCheckedChanged?.Invoke(_isChecked);
+                    CheckedChanged?.Invoke(_isChecked);
                 }
             }
         }
 
+        public string Text { get; set; } = string.Empty;
+        public Color BoxColor { get; set; } = Color.FromArgb(100, 149, 237); // CornflowerBlue
+        public Color CheckColor { get; set; } = Color.White;
+        public Color HoverBoxColor { get; set; } = Color.FromArgb(120, 169, 247);
+        public Color PressedBoxColor { get; set; } = Color.FromArgb(80, 129, 207);
+        public Font Font { get; set; } = Font.GetDefaultFont();
+
+        // Evento
+        public Action<bool>? CheckedChanged;
+
+        public CheckBox()
+        {
+            IsFocusable = true;
+            Width = BOX_SIZE + TEXT_SPACING + 100; // Espacio para texto
+            Height = BOX_SIZE;
+            IsFocusable = true;
+        }
+
         public override void Draw()
         {
-            if (!IsVisible) return;
+            if (!Visible) return;
 
-            // Calcular posición de la caja (centrada verticalmente)
-            float boxY = Bounds.Y + (Bounds.Height - BoxSize) / 2;
+            var absPos = GetAbsolutePosition();
+            var currentBoxColor = GetCurrentBoxColor();
 
-            // Determinar color de fondo de la caja
-            Color boxBgColor = IsHovered ? HoverColor : BoxColor;
-            if (!IsEnabled) boxBgColor = boxBgColor.WithAlpha(127);
+            // Dibujar el cuadro del checkbox
+            Renderer.DrawRect(
+                new Rect(absPos.X, absPos.Y, BOX_SIZE, BOX_SIZE),
+                currentBoxColor
+            );
 
-            // Dibujar caja exterior del checkbox
-            Renderer.DrawRect(Bounds.X, boxY, BoxSize, BoxSize, boxBgColor);
-            Renderer.DrawRectOutline(Bounds.X, boxY, BoxSize, BoxSize, BoxColor, BorderThickness);
+            // Dibujar el borde
+            Renderer.DrawRectOutline(
+                new Rect(absPos.X, absPos.Y, BOX_SIZE, BOX_SIZE),
+                Color.FromArgb(150, 150, 150),
+                1f
+            );
 
-            // Dibujar marca de verificación (simple cuadro relleno)
-            if (IsChecked)
+            // Dibujar la marca de verificación
+            if (Checked)
             {
-                float padding = 3f;
                 Renderer.DrawRect(
-                    Bounds.X + padding,
-                    boxY + padding,
-                    BoxSize - padding * 2,
-                    BoxSize - padding * 2,
-                    IsEnabled ? CheckColor : CheckColor.WithAlpha(127)
+                    new Rect(absPos.X + 2, absPos.Y + 2, BOX_SIZE - 4, BOX_SIZE - 4),
+                    CheckColor
                 );
             }
 
-            // Dibujar texto si existe
+            // Dibujar el texto si existe
             if (!string.IsNullOrEmpty(Text))
             {
-                float textX = Bounds.X + BoxSize + TextSpacing;
-                float textY = Bounds.Y + (Bounds.Height - 12) / 2; // Tamaño de fuente fijo a 12
-                Color textColor = IsEnabled ? Color.White : new Color(150, 150, 150);
-
-                Renderer.DrawText(Text, textX, textY, textColor, 12);
+                Renderer.DrawText(
+                    Text,
+                    new Vector2(absPos.X + BOX_SIZE + TEXT_SPACING, absPos.Y),
+                    ForeColor,
+                    Font
+                );
             }
+        }
+
+        private Color GetCurrentBoxColor()
+        {
+            if (!Enabled)
+                return BoxColor.WithAlpha(0.5f);
+
+            if (_isPressed)
+                return PressedBoxColor;
+
+            if (_isHovered)
+                return HoverBoxColor;
+
+            return BoxColor;
         }
 
         public override void Update()
         {
-            if (!IsVisible || !IsEnabled) return;
-
             base.Update();
 
-            // Manejar clic para alternar el estado
-            if (IsHovered && UIEventSystem.IsMousePressed)
+            if (!Enabled || !Visible) return;
+
+            Vector2 mousePos = UIEventSystem.MousePosition;
+            bool isMouseOver = Contains(mousePos);
+
+            // Actualizar estado hover
+            _isHovered = isMouseOver;
+        }
+
+        protected override void OnClick(Vector2 mousePos)
+        {
+            base.OnClick(mousePos);
+            if (Enabled)
             {
-                IsChecked = !IsChecked;
+                Checked = !Checked;
             }
         }
 
-        public override void Measure(Vector2 availableSize)
+        /// <summary>
+        /// Determina si el punto está dentro del área clickeable del CheckBox
+        /// </summary>
+        public override bool Contains(Vector2 point)
         {
-            if (!IsVisible)
-            {
-                Bounds = new Rect(Bounds.X, Bounds.Y, 0, 0);
-                return;
-            }
+            var absPos = GetAbsolutePosition();
 
-            // Calcular tamaño basado en el texto y el checkbox
-            float width = BoxSize;
-            float height = BoxSize;
-
+            // Área clickeable incluye el cuadro y el texto
+            float totalWidth = BOX_SIZE;
             if (!string.IsNullOrEmpty(Text))
             {
-                var textSize = Renderer.MeasureText(Text, 12);
-                width += TextSpacing + textSize.X;
-                height = Math.Max(height, textSize.Y);
+                var textSize = Font.MeasureText(Text);
+                totalWidth += TEXT_SPACING + textSize.X;
             }
 
-            // Mantener tamaño manual si fue especificado
-            if (!float.IsNaN(Bounds.Width)) width = Bounds.Width;
-            if (!float.IsNaN(Bounds.Height)) height = Bounds.Height;
-
-            Bounds = new Rect(Bounds.X, Bounds.Y, width, height);
+            return new Rect(absPos.X, absPos.Y, totalWidth, Height).Contains(point);
         }
     }
 }

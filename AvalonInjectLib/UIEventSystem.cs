@@ -5,27 +5,50 @@ namespace AvalonInjectLib
 {
     public static class UIEventSystem
     {
+        // Estados del teclado
+        private static char? _lastKeyPressed;
+        private static string _inputText = string.Empty;
+
+        // Estados del mouse
+        private static float _mouseWheelDelta;
         private static Vector2 _mousePosition;
         private static Vector2 _lastMousePosition;
         private static Vector2 _globalMousePosition;
         private static bool _mouseDown;
         private static bool _lastMouseDown;
-        private static UIControl _focusedControl;
         private static bool _isMouseInWindow = true;
 
+        // Control con foco
+        private static UIControl _focusedControl;
+
         // Propiedades públicas
+        public static float MouseWheelDelta => _mouseWheelDelta;
         public static Vector2 MousePosition => _mousePosition;
         public static Vector2 GlobalMousePosition => _globalMousePosition;
-        public static Vector2 MouseDelta => new Vector2(_mousePosition.X - _lastMousePosition.X, _mousePosition.Y - _lastMousePosition.Y);
+        public static Vector2 MouseDelta => _mousePosition - _lastMousePosition;
         public static bool IsMouseDown => _mouseDown;
         public static bool IsMousePressed => _mouseDown && !_lastMouseDown;
         public static bool IsMouseReleased => !_mouseDown && _lastMouseDown;
         public static bool IsMouseInWindow => _isMouseInWindow;
         public static Vector2 WindowSize => WindowCoordinateHelper.GetClientSize();
+        public static bool IsSCreenFocus => WindowCoordinateHelper.IsGameWindowActive();
+        private static bool _isPressed;
 
-        public static string InputText { get; internal set; }
-        public static bool BlockOtherControls { get; internal set; }
+        // Propiedades de entrada de texto
+        public static string InputText
+        {
+            get => _inputText;
+            internal set => _inputText = value ?? string.Empty;
+        }
 
+        public static char? LastKeyPressed
+        {
+            get => _lastKeyPressed;
+            internal set => _lastKeyPressed = value;
+        }
+
+        public static bool BlockOtherControls { get; internal set; } = false;
+   
         /// <summary>
         /// Inicializa el sistema de eventos UI
         /// </summary>
@@ -35,43 +58,45 @@ namespace AvalonInjectLib
         }
 
         /// <summary>
-        /// Actualiza el input del sistema UI con normalización automática
+        /// Actualiza el estado del input
         /// </summary>
-        internal static void UpdateInput((int X, int Y) globalMousePos, bool? mouseDown = null)
+        internal static void UpdateInput(Vector2 globalMousePos, bool? mouseDown = null)
         {
-            if (WindowCoordinateHelper.IsGameWindowActive())
+            // Guardar estado anterior
+            _lastMousePosition = _mousePosition;
+            if (mouseDown.HasValue)
             {
-                // Guardar estado anterior
-                _lastMousePosition = _mousePosition;
-                if (mouseDown != null)
-                {
-                    _lastMouseDown = _mouseDown;
-                }
+                _lastMouseDown = _mouseDown;
+            }
 
-                // Guardar posición global
-                _globalMousePosition = new Vector2(globalMousePos.X, globalMousePos.Y);
+            // Actualizar posición global
+            _globalMousePosition = globalMousePos;
 
-                // Normalizar posición del mouse a coordenadas de ventana
-                _mousePosition = WindowCoordinateHelper.GlobalToLocal(_globalMousePosition);
+            // Convertir a coordenadas locales de la ventana
+            _mousePosition = WindowCoordinateHelper.GlobalToLocal(_globalMousePosition);
+            _isMouseInWindow = WindowCoordinateHelper.IsMouseInWindow(_mousePosition);
 
+            // Actualizar estado del botón del mouse si se proporciona
+            if (mouseDown.HasValue)
+            {
+                _mouseDown = mouseDown.Value && _isMouseInWindow;
+            }
 
-                // Verificar si el mouse está dentro de la ventana
-                _isMouseInWindow = WindowCoordinateHelper.IsMouseInWindow(_mousePosition);
-
-                if (mouseDown != null)
-                {
-                    // Actualizar otros estados
-                    _mouseDown = mouseDown.Value && _isMouseInWindow; // Solo considerar clicks dentro de la ventana
-                }
+            // Limpiar foco si se hizo clic fuera de la ventana
+            if (!_isMouseInWindow && IsMousePressed)
+            {
+                ClearFocus();
             }
         }
 
         /// <summary>
-        /// Versión alternativa que acepta Vector2
+        /// Procesa los eventos para un control específico
         /// </summary>
-        internal static void UpdateInput(Vector2 globalMousePos, bool mouseDown)
+        internal static void ProcessEvents(UIControl control)
         {
-            UpdateInput(((int)globalMousePos.X, (int)globalMousePos.Y), mouseDown);
+            if (!control.Visible || !control.Enabled) return;
+
+            bool containsMouse = control.Contains(_mousePosition);
         }
 
         /// <summary>
@@ -79,7 +104,7 @@ namespace AvalonInjectLib
         /// </summary>
         public static Vector2 GetNormalizedMousePosition()
         {
-            var windowSize = WindowCoordinateHelper.GetClientSize();
+            var windowSize = WindowSize;
             return new Vector2(
                 windowSize.X > 0 ? _mousePosition.X / windowSize.X : 0,
                 windowSize.Y > 0 ? _mousePosition.Y / windowSize.Y : 0
@@ -87,92 +112,72 @@ namespace AvalonInjectLib
         }
 
         /// <summary>
-        /// Obtiene la posición del mouse en coordenadas relativas al centro de la ventana
+        /// Obtiene la posición del mouse relativa al centro de la ventana
         /// </summary>
         public static Vector2 GetCenteredMousePosition()
         {
-            var windowSize = WindowCoordinateHelper.GetClientSize();
-            return new Vector2(
-                _mousePosition.X - windowSize.X / 2,
-                _mousePosition.Y - windowSize.Y / 2
-            );
+            var windowSize = WindowSize;
+            return _mousePosition - (windowSize / 2);
         }
 
+        /// <summary>
+        /// Verifica si una tecla está presionada
+        /// </summary>
         internal static bool IsKeyPressed(Keys key)
         {
             return InputSystem.GetKeyDown(key);
         }
 
-        internal static void ProcessEvents(UIControl control)
+        /// <summary>
+        /// Obtiene el control con foco actual
+        /// </summary>
+        public static UIControl GetFocusedControl() => _focusedControl;
+
+        /// <summary>
+        /// Establece el control con foco
+        /// </summary>
+        public static void SetFocusedControl(UIControl control)
         {
-            if (!control.IsVisible || !control.IsEnabled) return;
-
-            // Solo procesar eventos si el mouse está dentro de la ventana
-            if (!_isMouseInWindow)
+            if (_focusedControl != control)
             {
-                // Si el mouse salió de la ventana, limpiar hover states
-                if (control.IsHovered)
-                {
-                    control.OnMouseLeave?.Invoke();
-                    control.IsHovered = false;
-                }
-                control.WasMouseDown = false;
-                return;
-            }
-
-            bool containsMouse = control.Bounds.Contains(_mousePosition.X, _mousePosition.Y);
-
-            // Eventos de mouse hover
-            if (containsMouse && !control.IsHovered)
-            {
-                control.OnMouseEnter?.Invoke();
-                control.IsHovered = true;
-            }
-            else if (!containsMouse && control.IsHovered)
-            {
-                control.OnMouseLeave?.Invoke();
-                control.IsHovered = false;
-            }
-
-            // Eventos de mouse press
-            if (containsMouse && IsMousePressed)
-            {
-                control.OnMouseDown?.Invoke(_mousePosition);
                 _focusedControl = control;
             }
+        }
 
-            // Eventos de mouse release
-            if (control.WasMouseDown && IsMouseReleased)
+        /// <summary>
+        /// Limpia el control con foco actual
+        /// </summary>
+        public static void ClearFocus()
+        {
+            SetFocusedControl(null);
+        }
+
+        /// <summary>
+        /// Verifica si se hizo clic con el mouse (presionado y luego liberado)
+        /// </summary>
+        internal static bool IsMouseClicked()
+        {
+            if (IsMousePressed && !_isPressed)
             {
-                control.OnMouseUp?.Invoke(_mousePosition);
-                if (containsMouse) control.OnClick?.Invoke(_mousePosition);
+                _isPressed = true;
+            }
+            else if (!IsMousePressed && _isPressed)
+            {
+                _isPressed = false;
+                return true;
             }
 
-            control.WasMouseDown = _mouseDown && containsMouse;
+            return false;
         }
 
-        /// <summary>
-        /// Obtiene el control que tiene el foco actualmente
-        /// </summary>
-        internal static UIControl GetFocusedControl()
+        internal static float GetMouseWheelDelta()
         {
-            return _focusedControl;
+            return _mouseWheelDelta;
         }
 
-        /// <summary>
-        /// Establece el foco en un control específico
-        /// </summary>
-        internal static void SetFocusedControl(UIControl control)
+        internal static void UpdateWell(bool isHorizontalWheel, int wheelDelta)
         {
-            _focusedControl = control;
-        }
-
-        /// <summary>
-        /// Limpia el foco actual
-        /// </summary>
-        internal static void ClearFocus()
-        {
-            _focusedControl = null;
+            _mouseWheelDelta = wheelDelta;
         }
     }
 }

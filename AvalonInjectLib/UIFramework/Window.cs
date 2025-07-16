@@ -1,485 +1,357 @@
-﻿namespace AvalonInjectLib.UIFramework
+﻿using AvalonInjectLib.UIFramework;
+using static AvalonInjectLib.Structs;
+using Color = AvalonInjectLib.UIFramework.Color;
+
+namespace AvalonInjectLib
 {
-    using static AvalonInjectLib.Structs;
-
-    public class Window : UIControl
+    public class Window : UIContainer
     {
-        public string Title { get; set; } = "";
-        public List<UIControl> Controls { get; } = new List<UIControl>();
-        public Color TitleBarColor { get; set; } = new Color(51, 102, 204);
-        public Color BorderColor { get; set; } = new Color(77, 77, 77);
-        public float BorderThickness { get; set; } = 2f;
-        public bool IsDraggable { get; set; } = true;
-        public bool IsResizable { get; set; } = false;
-        public bool ShowCloseButton { get; set; } = true;
-        public bool ShowMinimizeButton { get; set; } = false;
-        public bool ShowMaximizeButton { get; set; } = false;
-        public Vector2 MinSize { get; set; } = new Vector2(100, 50);
-        public Vector2 MaxSize { get; set; } = new Vector2(float.MaxValue, float.MaxValue);
-        public float TitleBarHeight { get; set; } = 30f;
-        public bool IsModal { get; private set; } = false;
-        public bool IsOpen { get; private set; } = false;
+        // Constantes
+        public const float TITLE_BAR_HEIGHT = 30f;
+        public const float BORDER_WIDTH = 2f;
+        public const float TITLE_PADDING = 5f;
+        public const float CLOSE_BUTTON_SIZE = 20f;
 
-        private bool _isDragging = false;
-        private bool _isResizing = false;
-        private Vector2 _dragOffset;
+        // Controles de la barra de título
+        private Label _titleLabel;
         private Button _closeButton;
-        private Button _minimizeButton;
-        private Button _maximizeButton;
-        private bool _isMinimized = false;
-        private bool _isMaximized = false;
-        private Rect _restoreRect;
-        private const float ResizeHandleSize = 10f;
+        private bool _isDragging = false;
+        private Vector2 _dragOffset;
+        private Vector2 _screenSize;
 
-        private UIControl _content;
-        private bool _closing = false;
+        // Propiedades
+        public string Title
+        {
+            get => _titleLabel.Text;
+            set => _titleLabel.Text = value;
+        }
 
-        public UIControl Content
+        public Color TitleBarColor { get; set; } = Color.FromArgb(32, 32, 32);
+        public Color TitleBarTextColor
+        {
+            get => _titleLabel.ForeColor;
+            set => _titleLabel.ForeColor = value;
+        }
+
+        public Color BorderColor { get; set; } = Color.FromArgb(64, 64, 64);
+
+        public bool HasTitleBar
+        {
+            get => _hasTitleBar;
+            set
+            {
+                _hasTitleBar = value;
+                _titleLabel.Visible = value;
+                _closeButton.Visible = value && Closable;
+                UpdateContentPosition();
+            }
+        }
+        private bool _hasTitleBar = true;
+
+        public bool HasBorder { get; set; } = true;
+        public bool IsActive { get; set; } = true;
+
+        public bool Closable
+        {
+            get => _closable;
+            set
+            {
+                _closable = value;
+                _closeButton.Visible = value && HasTitleBar;
+            }
+        }
+        private bool _closable = true;
+
+        // Contenido
+        private UIControl? _content;
+        public UIControl? Content
         {
             get => _content;
             set
             {
-                if (_content != value)
+                if (_content != null) base.RemoveChild(_content);
+                _content = value;
+                if (_content != null)
                 {
-                    if (_content != null)
-                    {
-                        Controls.Remove(_content);
-                    }
-                    _content = value;
-                    if (_content != null)
-                    {
-                        Controls.Add(_content);
-                        _content.Parent = this;
-                    }
+                    base.AddChild(_content);
+                    UpdateContentPosition();
                 }
             }
         }
 
-        public Action OnClosing;
+        // Eventos
+        public event Action? Closing;
+        public event Action? Closed;
+        public event Action? Shown;
 
         public Window()
         {
-            Bounds = new Rect(0, 0, 300, 300);
-            BackgroundColor = new Color(45, 45, 45);
-            Padding = new Thickness(5); 
+            Width = 400f;
+            Height = 300f;
+            BackColor = Color.FromArgb(240, 240, 240);
 
-            // Configurar botones
-            _closeButton = new Button()
+            // Inicializar título
+            _titleLabel = new Label
+            {
+                Text = "Window",
+                AutoSize = false,
+                ForeColor = Color.White,
+                BackColor = Color.Transparent,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            AddChild(_titleLabel);
+
+            // Inicializar botón de cierre
+            _closeButton = new Button
             {
                 Text = "×",
-                BackgroundColor = new Color(232, 17, 35),
-                TextColor = Color.White,
-                OnClick = _ => Close()
+                Font = Font.GetDefaultFont().WithSize(14),
+                Width = CLOSE_BUTTON_SIZE,
+                Height = CLOSE_BUTTON_SIZE,
+                BackColor = Color.Red,
+                TextColor = Color.White
             };
 
-            _minimizeButton = new Button()
-            {
-                Text = "−",
-                BackgroundColor = new Color(128, 128, 128),
-                TextColor = Color.White,
-                OnClick = _ => Minimize()
-            };
+            _closeButton.Click += (pos) => Close();
+            AddChild(_closeButton);
 
-            _maximizeButton = new Button()
-            {
-                Text = "□",
-                BackgroundColor = new Color(128, 128, 128),
-                TextColor = Color.White,
-                OnClick = _ => Maximize()
-            };
+            // Inicializar tamaño de pantalla
+            UpdateScreenSize();
+            UpdateTitleBarControls();
         }
 
-        public override void Draw()
+        public void UpdateScreenSize()
         {
-            if (!IsOpen) return;
+            _screenSize = UIEventSystem.WindowSize;
 
-            // Dibujar fondo de la ventana
-            Renderer.DrawRect(Bounds, BackgroundColor);
-
-            // Dibujar borde
-            Renderer.DrawRectOutline(Bounds, BorderColor, BorderThickness);
-
-            // Dibujar barra de título
-            var titleBarRect = new Rect(Bounds.X, Bounds.Y, Bounds.Width, TitleBarHeight);
-            Renderer.DrawRect(titleBarRect, TitleBarColor);
-
-            // Dibujar título
-            if (!string.IsNullOrEmpty(Title))
-            {
-                Renderer.DrawText(Title, Bounds.X + 10, Bounds.Y + 8, Color.White, 14);
-            }
-
-            // Dibujar botones de la ventana
-            if (ShowCloseButton || ShowMinimizeButton || ShowMaximizeButton)
-            {
-                float buttonY = Bounds.Y + (TitleBarHeight - 20) / 2;
-                float buttonSize = 20f;
-                float buttonSpacing = 5f;
-                float buttonX = Bounds.X + Bounds.Width - buttonSize - 5;
-
-                if (ShowCloseButton)
-                {
-                    _closeButton.SetBounds(buttonX, buttonY, buttonSize, buttonSize);
-                    _closeButton.Draw();
-                    buttonX -= buttonSize + buttonSpacing;
-                }
-
-                if (ShowMaximizeButton && !_isMaximized)
-                {
-                    _maximizeButton.SetBounds(buttonX, buttonY, buttonSize, buttonSize);
-                    _maximizeButton.Draw();
-                    buttonX -= buttonSize + buttonSpacing;
-                }
-
-                if (ShowMinimizeButton)
-                {
-                    _minimizeButton.SetBounds(buttonX, buttonY, buttonSize, buttonSize);
-                    _minimizeButton.Draw();
-                }
-            }
-
-            // Dibujar contenido solo si no está minimizada
-            if (!_isMinimized && Content != null)
-            {
-                // Calcular área de contenido (restando barra de título y padding)
-                var contentRect = new Rect(
-                    Bounds.X + Padding.Left,
-                    Bounds.Y + TitleBarHeight + Padding.Top,
-                    Math.Max(0, Bounds.Width - Padding.Left - Padding.Right),
-                    Math.Max(0, Bounds.Height - TitleBarHeight - Padding.Top - Padding.Bottom)
-                );
-
-                // Guardar posición original del contenido
-                var originalBounds = Content.Bounds;
-
-                // Establecer posición y tamaño del contenido dentro del área disponible
-                Content.Bounds = new Rect(
-                    contentRect.X + Content.Margin.Left,
-                    contentRect.Y + Content.Margin.Top,
-                    Math.Max(0, contentRect.Width - Content.Margin.Left - Content.Margin.Right),
-                    Math.Max(0, contentRect.Height - Content.Margin.Top - Content.Margin.Bottom)
-                );
-
-                // Dibujar el contenido
-                Content.Draw();
-
-                // Restaurar posición original
-                Content.Bounds = originalBounds;
-            }
-
-            // Dibujar manejador de redimensionamiento si está activo
-            if (IsResizable && !_isMinimized && !_isMaximized)
-            {
-                Renderer.DrawTriangle(
-                    Bounds.X + Bounds.Width - ResizeHandleSize, Bounds.Y + Bounds.Height,
-                    Bounds.X + Bounds.Width, Bounds.Y + Bounds.Height - ResizeHandleSize,
-                    Bounds.X + Bounds.Width, Bounds.Y + Bounds.Height,
-                    new Color(200, 200, 200, 150)
-                );
-            }
+            // Asegurarse que la ventana sigue dentro de los límites
+            X = Math.Clamp(X, 0, _screenSize.X - Width);
+            Y = Math.Clamp(Y, 0, _screenSize.Y - Height);
         }
+
+        bool _isPressed;
 
         public override void Update()
         {
-            if (!IsOpen) return;
+            if (!Visible) return;
 
-            base.Update();
+            // Actualizar tamaño de pantalla
+            UpdateScreenSize();
 
-            // Actualizar botones
-            if (ShowCloseButton) _closeButton.Update();
-            if (ShowMinimizeButton) _minimizeButton.Update();
-            if (ShowMaximizeButton) _maximizeButton.Update();
+            // Manejar eventos de arrastre primero
+            Vector2 mousePos = UIEventSystem.MousePosition;
+            bool isMouseOver = Contains(mousePos);
 
-            // Manejar eventos de la ventana (arrastre, redimensionamiento, etc.)
-            HandleWindowEvents();
-
-            // Actualizar contenido solo si no está minimizada
-            if (!_isMinimized && Content != null)
+            if (UIEventSystem.IsSCreenFocus)
             {
-                // Calcular área de contenido (igual que en Draw)
-                var contentRect = new Rect(
-                    Bounds.X + Padding.Left,
-                    Bounds.Y + TitleBarHeight + Padding.Top,
-                    Math.Max(0, Bounds.Width - Padding.Left - Padding.Right),
-                    Math.Max(0, Bounds.Height - TitleBarHeight - Padding.Top - Padding.Bottom)
-                );
-
-                // Guardar posición original
-                var originalBounds = Content.Bounds;
-
-                // Establecer posición y tamaño para la actualización
-                Content.Bounds = new Rect(
-                    contentRect.X + Content.Margin.Left,
-                    contentRect.Y + Content.Margin.Top,
-                    Math.Max(0, contentRect.Width - Content.Margin.Left - Content.Margin.Right),
-                    Math.Max(0, contentRect.Height - Content.Margin.Top - Content.Margin.Bottom)
-                );
-
-                // Actualizar el contenido
-                Content.Update();
-
-                // Restaurar posición original
-                Content.Bounds = originalBounds;
+                if (isMouseOver)
+                {
+                    // Manejar MouseDown
+                    if (UIEventSystem.IsMousePressed && !_isPressed)
+                    {
+                        _isPressed = true;
+                        OnMouseDown(mousePos);
+                    }
+                    // Manejar MouseUp
+                    else if (!UIEventSystem.IsMousePressed && _isPressed)
+                    {
+                        _isPressed = false;
+                        OnMouseUp(mousePos);
+                    }
+                    // Manejar MouseMove
+                    OnMouseMove(mousePos);
+                }
+                else if (_isPressed)
+                {
+                    // Manejar caso cuando el mouse se sale durante el arrastre
+                    if (!UIEventSystem.IsMousePressed)
+                    {
+                        _isPressed = false;
+                    }
+                    OnMouseMove(mousePos); // Seguir moviendo aunque el mouse salga
+                }
             }
 
-            // Bloquear interacción con otras ventanas si es modal
-            if (IsModal)
-            {
-                UIEventSystem.BlockOtherControls = true;
-            }
+            // Actualizar controles de la barra de título
+            UpdateTitleBarControls();
+
+            // Actualizar posición del contenido
+            UpdateContentPosition();
+
+            // Actualizar controles hijos (pero después de manejar los eventos de la ventana)
+            _titleLabel.Update();
+            _closeButton.Update();
+            _content?.Update();
         }
 
-        private void HandleWindowEvents()
+        protected override void OnMouseDown(Vector2 mousePos)
         {
-            var mousePos = UIEventSystem.MousePosition;
-            var mouseDown = UIEventSystem.IsMouseDown;
-            var mousePressed = UIEventSystem.IsMousePressed;
-            var screenSize = Renderer.GetScreenSize();
+            base.OnMouseDown(mousePos);
 
-            // Verificar si se hizo clic en los botones de la ventana
-            bool clickedButton = false;
-
-            if (ShowCloseButton && _closeButton.Bounds.Contains(mousePos))
-                clickedButton = true;
-            if (ShowMinimizeButton && _minimizeButton.Bounds.Contains(mousePos))
-                clickedButton = true;
-            if (ShowMaximizeButton && _maximizeButton.Bounds.Contains(mousePos))
-                clickedButton = true;
-
-            // Manejar arrastre de la ventana
-            if (IsDraggable && !_isMaximized && !_isResizing && !clickedButton)
+            // Verificar si el click fue en la barra de título
+            if (HasTitleBar && IsActive && IsMouseOnTitleBar(mousePos))
             {
-                var titleBarRect = new Rect(Bounds.X, Bounds.Y, Bounds.Width, TitleBarHeight);
-
-                if (mousePressed && titleBarRect.Contains(mousePos) && !_isDragging)
+                // Verificar que no sea en el botón de cierre
+                if (!_closeButton.Contains(mousePos))
                 {
                     _isDragging = true;
-                    _dragOffset = new Vector2(mousePos.X - Bounds.X, mousePos.Y - Bounds.Y);
-                    Focus(); // Dar foco a la ventana al arrastrar
+                    var absPos = GetAbsolutePosition();
+                    _dragOffset = new Vector2(mousePos.X - absPos.X, mousePos.Y - absPos.Y);
                 }
-
-                if (_isDragging)
-                {
-                    if (mouseDown)
-                    {
-                        // Calcular nueva posición con restricciones
-                        float newX = mousePos.X - _dragOffset.X;
-                        float newY = mousePos.Y - _dragOffset.Y;
-
-                        // Restricciones para que la ventana no salga de la pantalla
-                        newX = Math.Max(0, newX); // No salir por izquierda
-                        newY = Math.Max(0, newY); // No salir por arriba
-                        newX = Math.Min(screenSize.X - Bounds.Width, newX); // No salir por derecha
-                        newY = Math.Min(screenSize.Y - TitleBarHeight, newY); // No salir por abajo (solo barra de título visible)
-
-                        Bounds = new Rect(newX, newY, Bounds.Width, Bounds.Height);
-                    }
-                    else
-                    {
-                        _isDragging = false;
-                    }
-                }
-            }
-
-            // Manejar redimensionamiento
-            if (IsResizable && !_isMinimized && !_isMaximized && !_isDragging)
-            {
-                // Área del manejador de redimensionamiento (esquina inferior derecha)
-                bool overResizeHandle = mousePos.X >= Bounds.X + Bounds.Width - ResizeHandleSize &&
-                                      mousePos.Y >= Bounds.Y + Bounds.Height - ResizeHandleSize &&
-                                      mousePos.X <= Bounds.X + Bounds.Width &&
-                                      mousePos.Y <= Bounds.Y + Bounds.Height;
-
-                if (mousePressed && overResizeHandle)
-                {
-                    _isResizing = true;
-                }
-
-                if (_isResizing)
-                {
-                    if (mouseDown)
-                    {
-                        // Calcular nuevo tamaño con restricciones
-                        float newWidth = Math.Clamp(mousePos.X - Bounds.X, MinSize.X, MaxSize.X);
-                        float newHeight = Math.Clamp(mousePos.Y - Bounds.Y, MinSize.Y, MaxSize.Y);
-
-                        Bounds = new Rect(Bounds.X, Bounds.Y, newWidth, newHeight);
-                    }
-                    else
-                    {
-                        _isResizing = false;
-                    }
-                }
-            }
-
-
-            // Manejar foco al hacer clic en la ventana
-            if (mousePressed && Bounds.Contains(mousePos) && !clickedButton)
-            {
-                Focus();
             }
         }
 
-        protected override Vector2 MeasureCore(Vector2 availableSize)
+        protected override void OnMouseUp(Vector2 mousePos)
         {
-            if (!IsVisible)
+            base.OnMouseUp(mousePos);
+            if (_isDragging)
             {
-                DesiredSize = Vector2.Zero;
-                return DesiredSize;
+                _isDragging = false;
             }
-
-            // Tamaño mínimo de la ventana (barra de título + padding)
-            var minSize = new Vector2(
-                Padding.Left + Padding.Right,
-                TitleBarHeight + Padding.Top + Padding.Bottom
-            );
-
-            // Si no hay contenido, devolver el tamaño mínimo
-            if (Content == null || _isMinimized)
-            {
-                DesiredSize = minSize;
-                return DesiredSize;
-            }
-
-            // Calcular tamaño disponible para el contenido
-            var contentAvailableSize = new Vector2(
-                Math.Max(0, availableSize.X - Padding.Left - Padding.Right),
-                Math.Max(0, availableSize.Y - TitleBarHeight - Padding.Top - Padding.Bottom)
-            );
-
-            // Medir el contenido
-            Content.Measure(contentAvailableSize);
-
-            // Calcular tamaño deseado de la ventana
-            DesiredSize = new Vector2(
-                Math.Max(minSize.X, Content.DesiredSize.X + Padding.Left + Padding.Right),
-                Math.Max(minSize.Y, Content.DesiredSize.Y + TitleBarHeight + Padding.Top + Padding.Bottom)
-            );
-
-            return DesiredSize;
         }
 
-        protected override void ArrangeCore(Rect finalRect)
+        protected override void OnMouseMove(Vector2 mousePos)
         {
-            if (!IsVisible) return;
+            base.OnMouseMove(mousePos);
 
-            // Establecer los bounds de la ventana
-            Bounds = finalRect;
+            if (_isDragging)
+            {
+                // Calcular nueva posición
+                float newX = mousePos.X - _dragOffset.X;
+                float newY = mousePos.Y - _dragOffset.Y;
 
-            // Si está minimizada o no hay contenido, no hay nada más que hacer
-            if (_isMinimized || Content == null) return;
+                // Aplicar límites de pantalla
+                newX = Math.Clamp(newX, 0, _screenSize.X - Width);
+                newY = Math.Clamp(newY, 0, _screenSize.Y - Height);
 
-            // Calcular área de contenido (restando barra de título y padding)
-            var contentRect = new Rect(
-                finalRect.X + Padding.Left,
-                finalRect.Y + TitleBarHeight + Padding.Top,
-                Math.Max(0, finalRect.Width - Padding.Left - Padding.Right),
-                Math.Max(0, finalRect.Height - TitleBarHeight - Padding.Top - Padding.Bottom)
-            );
-
-            // Organizar el contenido dentro del área disponible
-            Content.Arrange(contentRect);
+                // Actualizar posición
+                X = newX;
+                Y = newY;
+            }
         }
 
+        private bool IsMouseOnTitleBar(Vector2 mousePos)
+        {
+            if (!HasTitleBar) return false;
+
+            var absPos = GetAbsolutePosition();
+            var titleBarRect = new Rect(
+                absPos.X + (HasBorder ? BORDER_WIDTH : 0),
+                absPos.Y + (HasBorder ? BORDER_WIDTH : 0),
+                Width - (HasBorder ? BORDER_WIDTH * 2 : 0),
+                TITLE_BAR_HEIGHT
+            );
+
+            return titleBarRect.Contains(mousePos) && !_closeButton.Contains(mousePos);
+        }
 
         public void Show()
         {
-            IsOpen = true;
-            IsModal = false;
-            OnShown?.Invoke();
-        }
-
-        public void ShowDialog()
-        {
-            IsOpen = true;
-            IsModal = true;
-            OnShown?.Invoke();
+            this.Visible = true;
+            Shown?.Invoke();
         }
 
         public void Close()
         {
-            if (_closing) return;
-            _closing = true;
-
-            // Invoke closing event
-            OnClosing?.Invoke();
-
-            IsOpen = false;
-            IsModal = false;
-            IsVisible = false;
-            UIEventSystem.BlockOtherControls = false;
-            OnClosed?.Invoke();
+            Closing?.Invoke();
+            this.Visible = false;
+            Closed?.Invoke();
         }
 
-        public void AddControl(UIControl control)
+        public override void Draw()
         {
-            if (control != null && !Controls.Contains(control))
+            if (!Visible) return;
+
+            var absPos = GetAbsolutePosition();
+
+            // Dibujar borde
+            if (HasBorder)
             {
-                Controls.Add(control);
-                control.Parent = this;
+                Renderer.DrawRect(new Rect(absPos.X, absPos.Y, Width, Height), BorderColor);
             }
+
+            // Dibujar barra de título (fondo)
+            if (HasTitleBar)
+            {
+                var titleBarRect = GetTitleBarRect();
+                Renderer.DrawRect(
+                    new Rect(absPos.X + titleBarRect.X,
+                            absPos.Y + titleBarRect.Y,
+                            titleBarRect.Width,
+                            titleBarRect.Height),
+                    TitleBarColor);
+            }
+
+            // Dibujar controles hijos (solo estos dos en orden específico)
+            _titleLabel.Draw();
+            _closeButton.Draw();
+
+            // Dibujar contenido si existe
+            _content?.Draw();
         }
 
-        public void RemoveControl(UIControl control)
+        protected void UpdateTitleBarControls()
         {
-            if (control != null)
-            {
-                Controls.Remove(control);
-                control.Parent = null;
-            }
+            if (!HasTitleBar) return;
+
+            // Obtener posición absoluta de la ventana
+            var absPos = GetAbsolutePosition();
+            var titleBarRect = GetTitleBarRect();
+
+            // Calcular posición relativa del título
+            float titleX = TITLE_PADDING + (HasBorder ? BORDER_WIDTH : 0);
+            float titleY = (TITLE_BAR_HEIGHT - _titleLabel.Height) / 2 + (HasBorder ? BORDER_WIDTH : 0);
+
+            // Posicionar título (coordenadas relativas a la ventana)
+            _titleLabel.X = titleX;
+            _titleLabel.Y = titleY;
+            _titleLabel.Width = titleBarRect.Width - CLOSE_BUTTON_SIZE - (TITLE_PADDING * 2);
+
+            // Calcular posición relativa del botón de cierre
+            float closeX = Width - CLOSE_BUTTON_SIZE - TITLE_PADDING - (HasBorder ? BORDER_WIDTH : 0);
+            float closeY = (TITLE_BAR_HEIGHT - CLOSE_BUTTON_SIZE) / 2 + (HasBorder ? BORDER_WIDTH : 0);
+
+            // Posicionar botón de cierre (coordenadas relativas a la ventana)
+            _closeButton.X = closeX;
+            _closeButton.Y = closeY;
+            _closeButton.Width = CLOSE_BUTTON_SIZE;
+            _closeButton.Height = CLOSE_BUTTON_SIZE;
         }
 
-        public void ClearControls()
+        private void UpdateContentPosition()
         {
-            foreach (var control in Controls)
-            {
-                control.Parent = null;
-            }
-            Controls.Clear();
+            if (_content == null) return;
+
+            var contentArea = GetContentArea();
+            _content.X = contentArea.X;
+            _content.Y = contentArea.Y;
+            _content.Width = contentArea.Width;
+            _content.Height = contentArea.Height;
         }
 
-        public void Minimize()
+        private Rect GetTitleBarRect()
         {
-            _isMinimized = !_isMinimized;
-            if (_isMinimized)
-            {
-                _restoreRect = Bounds;
-                Bounds = new Rect(Bounds.X, Bounds.Y, Bounds.Width, TitleBarHeight);
-            }
-            else
-            {
-                Bounds = _restoreRect;
-            }
-        }
-
-        public void Maximize()
-        {
-            if (!_isMaximized)
-            {
-                _restoreRect = Bounds;
-                var screenSize = Renderer.GetScreenSize();
-                Bounds = new Rect(0, 0, screenSize.X, screenSize.Y);
-                _isMaximized = true;
-            }
-            else
-            {
-                Bounds = _restoreRect;
-                _isMaximized = false;
-            }
-        }
-
-        public void CenterOnScreen()
-        {
-            var screenSize = Renderer.GetScreenSize();
-            Bounds = new Rect(
-                (screenSize.X - Bounds.Width) / 2,
-                (screenSize.Y - Bounds.Height) / 2,
-                Bounds.Width,
-                Bounds.Height
+            return new Rect(
+                HasBorder ? BORDER_WIDTH : 0,
+                HasBorder ? BORDER_WIDTH : 0,
+                Width - (HasBorder ? BORDER_WIDTH * 2 : 0),
+                TITLE_BAR_HEIGHT
             );
         }
 
-        public Action OnShown;
-        public Action OnClosed;
+        private Rect GetContentArea()
+        {
+            float contentY = HasTitleBar ? TITLE_BAR_HEIGHT : 0;
+            contentY += HasBorder ? BORDER_WIDTH : 0;
+
+            return new Rect(
+                HasBorder ? BORDER_WIDTH : 0,
+                contentY,
+                Width - (HasBorder ? BORDER_WIDTH * 2 : 0),
+                Height - contentY - (HasBorder ? BORDER_WIDTH : 0)
+            );
+        }
     }
 }

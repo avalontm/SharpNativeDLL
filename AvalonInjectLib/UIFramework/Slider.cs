@@ -1,192 +1,194 @@
-﻿namespace AvalonInjectLib.UIFramework
-{
-    using static AvalonInjectLib.Structs;
+﻿using static AvalonInjectLib.Structs;
+using System;
 
+namespace AvalonInjectLib.UIFramework
+{
     public class Slider : UIControl
     {
-        // Propiedades del slider
-        private float _value = 50f;
-        private float _minValue = 0f;
-        private float _maxValue = 100f;
-        private bool _isDragging = false;
+        // Constantes para el diseño
+        private const float TRACK_HEIGHT = 6f;
+        private const float THUMB_WIDTH = 12f;
+        private const float THUMB_HEIGHT = 16f;
+        private const float TEXT_PADDING = 5f;
 
-        // Apariencia
-        public Color FillColor { get; set; } = new Color(70, 130, 180);
-        public Color EmptyColor { get; set; } = new Color(60, 60, 60);
-        public Color HandleColor { get; set; } = Color.White;
-        public float TrackHeight { get; set; } = 6f;
-        public float HandleSize { get; set; } = 16f;
-        public bool ShowValue { get; set; } = true;
-        public string ValueFormat { get; set; } = "F1"; // Formato para mostrar el valor
-        public string Label { get; set; } = "";
-        public TextStyle TextStyle { get; set; } = TextStyle.Default;
+        // Estados
+        private bool _isDragging;
+        private float _value;
+        private string _text = string.Empty;
 
-        // Eventos
-        public Action<float> OnValueChanged;
-
+        // Propiedades
         public float Value
         {
             get => _value;
             set
             {
-                float newValue = Math.Clamp(value, _minValue, _maxValue);
-                if (Math.Abs(_value - newValue) > float.Epsilon)
+                var newValue = Math.Clamp(value, MinValue, MaxValue);
+                if (_value != newValue)
                 {
                     _value = newValue;
-                    OnValueChanged?.Invoke(_value);
+                    ValueChanged?.Invoke(_value);
                 }
             }
         }
 
-        public float MinValue
+        public string Text
         {
-            get => _minValue;
+            get => _text;
             set
             {
-                _minValue = value;
-                Value = _value; // Re-clamp el valor actual
+                _text = value;
+                UpdateLayout();
             }
         }
 
-        public float MaxValue
+        public float MinValue { get; set; } = 0f;
+        public float MaxValue { get; set; } = 100f;
+        public Color TrackColor { get; set; } = Color.FromArgb(70, 70, 70);
+        public Color FillColor { get; set; } = Color.FromArgb(100, 149, 237);
+        public Color ThumbColor { get; set; } = Color.White;
+        public Color ThumbHoverColor { get; set; } = Color.FromArgb(220, 220, 220);
+        public Color ThumbBorderColor { get; set; } = Color.FromArgb(150, 150, 150);
+        public bool ShowValue { get; set; } = true;
+        public Font Font { get; set; } = Font.GetDefaultFont();
+
+        // Evento
+        public Action<float>? ValueChanged;
+
+        public Slider()
         {
-            get => _maxValue;
-            set
-            {
-                _maxValue = value;
-                Value = _value; // Re-clamp el valor actual
-            }
+            Width = 200f;
+            Height = Math.Max(THUMB_HEIGHT, (Font.LineHeight * 3));
+            IsFocusable = true;
         }
 
-        public int DecimalPlaces { get; set; }
+        private void UpdateLayout()
+        {
+            // Ajustar altura si el texto es más grande que el thumb
+            if (!string.IsNullOrEmpty(Text))
+            {
+                Height = Math.Max(THUMB_HEIGHT, (Font.LineHeight *3));
+            }
+        }
 
         public override void Draw()
         {
-            if (!IsVisible) return;
+            if (!Visible) return;
 
-            // Calcular posición y tamaño de la barra de progreso
-            float trackY = Bounds.Y + (Bounds.Height - TrackHeight) / 2;
-            float fillWidth = (_value - _minValue) / (_maxValue - _minValue) * Bounds.Width;
+            var absPos = GetAbsolutePosition();
+            float trackY = absPos.Y + (Height - TRACK_HEIGHT) / 2;
 
-            // Dibujar barra de fondo
-            Renderer.DrawRect(Bounds.X, trackY, Bounds.Width, TrackHeight, EmptyColor);
+            // Calcular posición del thumb
+            float percentage = (Value - MinValue) / (MaxValue - MinValue);
+            float thumbX = absPos.X + (Width - THUMB_WIDTH) * percentage;
 
-            // Dibujar barra de progreso
-            if (fillWidth > 0)
+            // Dibujar texto descriptivo si existe
+            if (!string.IsNullOrEmpty(Text))
             {
-                Renderer.DrawRect(Bounds.X, trackY, fillWidth, TrackHeight, FillColor);
+                Renderer.DrawText(
+                    Text,
+                    new Vector2(absPos.X, absPos.Y),
+                    ForeColor,
+                    Font
+                );
             }
 
-            // Dibujar manejador
-            float handleX = Bounds.X + fillWidth - HandleSize / 2;
-            float handleY = Bounds.Y + (Bounds.Height - HandleSize) / 2;
-            Color handleColor = _isDragging ? FillColor : HandleColor;
+            // Dibujar track (fondo)
+            Renderer.DrawRect(
+                new Rect(absPos.X, trackY, Width, TRACK_HEIGHT),
+                TrackColor
+            );
 
-            Renderer.DrawRect(handleX, handleY, HandleSize, HandleSize, handleColor);
+            // Dibujar fill (parte llena)
+            Renderer.DrawRect(
+                new Rect(absPos.X, trackY, (Width - THUMB_WIDTH) * percentage + THUMB_WIDTH / 2, TRACK_HEIGHT),
+                FillColor
+            );
 
-            // Dibujar etiqueta si existe
-            if (!string.IsNullOrEmpty(Label))
-            {
-                Renderer.DrawText(Label, Bounds.X, Bounds.Y - 20, TextStyle.Color, TextStyle.Size);
-            }
+            // Dibujar thumb (rectángulo)
+            Color currentThumbColor = _isDragging || Contains(UIEventSystem.MousePosition) ?
+                ThumbHoverColor : ThumbColor;
 
-            // Mostrar valor actual si está habilitado
+            Renderer.DrawRect(
+                new Rect(thumbX, trackY - (THUMB_HEIGHT - TRACK_HEIGHT) / 2, THUMB_WIDTH, THUMB_HEIGHT),
+                currentThumbColor
+            );
+
+            // Dibujar borde del thumb
+            Renderer.DrawRectOutline(
+                new Rect(thumbX, trackY - (THUMB_HEIGHT - TRACK_HEIGHT) / 2, THUMB_WIDTH, THUMB_HEIGHT),
+                ThumbBorderColor,
+                1f
+            );
+
+            // Mostrar valor numérico si está habilitado
             if (ShowValue)
             {
-                string valueText = _value.ToString(ValueFormat);
-                var textSize = Renderer.MeasureText(valueText, TextStyle.Size);
+                string valueText = $"{Value:0}";
+                var textSize = Font.MeasureText(valueText);
                 Renderer.DrawText(
                     valueText,
-                    Bounds.X + Bounds.Width + 10,
-                    Bounds.Y + (Bounds.Height - textSize.Y) / 2,
-                    TextStyle.Color,
-                    TextStyle.Size
+                    new Vector2(absPos.X + Width + TEXT_PADDING, absPos.Y + (Height - textSize.Y) / 2),
+                    ForeColor,
+                    Font
                 );
             }
         }
 
         public override void Update()
         {
-            if (!IsVisible || !IsEnabled) return;
-
             base.Update();
 
-            var mousePos = UIEventSystem.MousePosition;
+            if (!Enabled || !Visible || !UIEventSystem.IsSCreenFocus) return;
 
-            // Manejar inicio de arrastre
-            if (!_isDragging && UIEventSystem.IsMousePressed)
+            Vector2 mousePos = UIEventSystem.MousePosition;
+            bool isMouseOver = Contains(mousePos);
+
+            // Comenzar arrastre
+            if (UIEventSystem.IsMousePressed && isMouseOver && !_isDragging)
             {
-                // Verificar si se hizo clic en el manejador o cerca de la barra
-                float handleX = Bounds.X + ((_value - _minValue) / (_maxValue - _minValue)) * Bounds.Width;
-                float handleY = Bounds.Y + Bounds.Height / 2;
-
-                float distToHandle = Math.Abs(mousePos.X - handleX);
-                float distToTrack = Math.Abs(mousePos.Y - handleY);
-
-                if (distToHandle < HandleSize * 1.5f && distToTrack < HandleSize * 2f)
-                {
-                    _isDragging = true;
-                }
-                else if (Bounds.Contains(mousePos.X, mousePos.Y))
-                {
-                    // Click directo en la barra - saltar a esa posición
-                    _isDragging = true;
-                    UpdateValueFromMouse(mousePos.X);
-                }
+                _isDragging = true;
+                UpdateValueFromMouse(mousePos);
             }
-
-            // Manejar arrastre continuo
-            if (_isDragging)
+            // Continuar arrastre
+            else if (_isDragging && UIEventSystem.IsMousePressed)
             {
-                if (UIEventSystem.IsMouseDown)
-                {
-                    UpdateValueFromMouse(mousePos.X);
-                }
-                else
-                {
-                    _isDragging = false;
-                }
+                UpdateValueFromMouse(mousePos);
+            }
+            // Finalizar arrastre
+            else if (_isDragging && !UIEventSystem.IsMousePressed)
+            {
+                _isDragging = false;
             }
         }
 
-        private void UpdateValueFromMouse(float mouseX)
+        private void UpdateValueFromMouse(Vector2 mousePos)
         {
-            float normalized = Math.Clamp((mouseX - Bounds.X) / Bounds.Width, 0, 1);
-            Value = _minValue + normalized * (_maxValue - _minValue);
+            var absPos = GetAbsolutePosition();
+            float relativeX = mousePos.X - absPos.X - THUMB_WIDTH / 2;
+            float percentage = Math.Clamp(relativeX / (Width - THUMB_WIDTH), 0f, 1f);
+            Value = MinValue + percentage * (MaxValue - MinValue);
         }
 
-        public override void Measure(Vector2 availableSize)
+        protected override void OnClick(Vector2 mousePos)
         {
-            if (!IsVisible)
+            base.OnClick(mousePos);
+            if (Enabled && !_isDragging)
             {
-                Bounds = new Rect(Bounds.X, Bounds.Y, 0, 0);
-                return;
+                UpdateValueFromMouse(mousePos);
             }
+        }
 
-            // Tamaño mínimo recomendado
-            float width = 100f;
-            float height = HandleSize;
+        public override bool Contains(Vector2 point)
+        {
+            var absPos = GetAbsolutePosition();
+            float trackY = absPos.Y + (Height - TRACK_HEIGHT) / 2;
 
-            // Ajustar por etiqueta
-            if (!string.IsNullOrEmpty(Label))
-            {
-                var labelSize = Renderer.MeasureText(Label, TextStyle.Size);
-                height += 20; // Espacio para la etiqueta
-            }
-
-            // Ajustar por valor mostrado
-            if (ShowValue)
-            {
-                var sampleValue = _maxValue.ToString(ValueFormat);
-                var valueSize = Renderer.MeasureText(sampleValue, TextStyle.Size);
-                width += valueSize.X + 15; // Espacio para el texto del valor
-            }
-
-            // Mantener tamaño manual si fue especificado
-            if (!float.IsNaN(Bounds.Width)) width = Bounds.Width;
-            if (!float.IsNaN(Bounds.Height)) height = Bounds.Height;
-
-            Bounds = new Rect(Bounds.X, Bounds.Y, width, height);
+            // Área interactiva incluye el thumb y la pista
+            return new Rect(
+                absPos.X,
+                trackY - (THUMB_HEIGHT - TRACK_HEIGHT) / 2,
+                Width,
+                THUMB_HEIGHT).Contains(point);
         }
     }
 }

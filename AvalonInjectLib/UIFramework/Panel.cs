@@ -1,189 +1,405 @@
-﻿using AvalonInjectLib;
-using AvalonInjectLib.UIFramework;
-using static AvalonInjectLib.Structs;
+﻿using static AvalonInjectLib.Structs;
+using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace AvalonInjectLib.UIFramework
 {
-    public class Panel : UIControl
+    public class Panel : UIContainer
     {
-        private List<UIControl> _children = new List<UIControl>();
-        private Color _borderColor = Color.Transparent;
-        private float _borderThickness = 0f;
-        private bool _clipChildren = true;
+        // Constantes para el diseño
+        private const float DEFAULT_BORDER_WIDTH = 1f;
 
-        public IReadOnlyList<UIControl> Children => _children.AsReadOnly();
+        // Propiedades de borde
+        public bool ShowBorder { get; set; } = false;
+        public Color BorderColor { get; set; } = Color.FromArgb(100, 100, 100);
+        public float BorderWidth { get; set; } = DEFAULT_BORDER_WIDTH;
 
-        public Color BorderColor
-        {
-            get => _borderColor;
-            set => _borderColor = value;
-        }
+        // Propiedades de padding interno
+        public float PaddingLeft { get; set; } = 0f;
+        public float PaddingTop { get; set; } = 0f;
+        public float PaddingRight { get; set; } = 0f;
+        public float PaddingBottom { get; set; } = 0f;
 
-        public float BorderThickness
-        {
-            get => _borderThickness;
-            set => _borderThickness = Math.Max(0, value);
-        }
+        // Propiedades de scroll (para futura implementación)
+        public bool AutoScroll { get; set; } = false;
+        public bool ShowScrollBars { get; set; } = false;
 
-        public bool ClipChildren
-        {
-            get => _clipChildren;
-            set => _clipChildren = value;
-        }
+        // Propiedades de diseño
+        public BorderStyle BorderStyle { get; set; } = BorderStyle.Solid;
 
+        // Constructor
         public Panel()
         {
-            BackgroundColor = new Color(40, 40, 40);
+            BackColor = Color.FromArgb(64, 64, 64);
+            Width = 200f;
+            Height = 150f;
         }
 
+        // Métodos de conveniencia para establecer padding
+        public void SetPadding(float all)
+        {
+            PaddingLeft = PaddingTop = PaddingRight = PaddingBottom = all;
+        }
+
+        public void SetPadding(float horizontal, float vertical)
+        {
+            PaddingLeft = PaddingRight = horizontal;
+            PaddingTop = PaddingBottom = vertical;
+        }
+
+        public void SetPadding(float left, float top, float right, float bottom)
+        {
+            PaddingLeft = left;
+            PaddingTop = top;
+            PaddingRight = right;
+            PaddingBottom = bottom;
+        }
+
+        // Propiedades calculadas
+        public float ContentWidth => Math.Max(0, Width - PaddingLeft - PaddingRight - (ShowBorder ? BorderWidth * 2 : 0));
+        public float ContentHeight => Math.Max(0, Height - PaddingTop - PaddingBottom - (ShowBorder ? BorderWidth * 2 : 0));
+
+        public Vector2 ContentPosition
+        {
+            get
+            {
+                float offsetX = PaddingLeft + (ShowBorder ? BorderWidth : 0);
+                float offsetY = PaddingTop + (ShowBorder ? BorderWidth : 0);
+                return new Vector2(X + offsetX, Y + offsetY);
+            }
+        }
+
+        // Método para obtener el área de contenido disponible
+        public Rect GetContentArea()
+        {
+            var contentPos = ContentPosition;
+            return new Rect(contentPos.X, contentPos.Y, ContentWidth, ContentHeight);
+        }
+
+        // Método para obtener el área de contenido en coordenadas absolutas
+        public Rect GetAbsoluteContentArea()
+        {
+            var absPos = GetAbsolutePosition();
+            float offsetX = PaddingLeft + (ShowBorder ? BorderWidth : 0);
+            float offsetY = PaddingTop + (ShowBorder ? BorderWidth : 0);
+
+            return new Rect(
+                absPos.X + offsetX,
+                absPos.Y + offsetY,
+                ContentWidth,
+                ContentHeight
+            );
+        }
+
+        // Override del método AddChild para posicionar automáticamente dentro del área de contenido
+        public override void AddChild(UIControl child)
+        {
+            if (child == null) return;
+
+            base.AddChild(child);
+
+            // Opcional: Ajustar posición del hijo al área de contenido
+            // (comentado porque a veces querrás posicionar manualmente)
+            /*
+            var contentPos = ContentPosition;
+            child.X += contentPos.X;
+            child.Y += contentPos.Y;
+            */
+        }
+
+        // Método para auto-posicionar un control dentro del área de contenido
+        public void AddChildToContent(UIControl child, float x = 0, float y = 0)
+        {
+            if (child == null) return;
+
+            var contentPos = ContentPosition;
+            child.X = x;
+            child.Y = y;
+
+            AddChild(child);
+        }
+
+        // Método para centrar un control dentro del panel
+        public void CenterChild(UIControl child)
+        {
+            if (child == null || !children.Contains(child)) return;
+
+            child.X = (ContentWidth - child.Width) / 2;
+            child.Y = (ContentHeight - child.Height) / 2;
+        }
+
+        // Método para organizar controles hijos en layout automático
+        public void ArrangeChildrenVertically(float spacing = 5f)
+        {
+            float currentY = 0;
+
+            foreach (var child in children)
+            {
+                if (!child.Visible) continue;
+
+                child.Y = currentY;
+                currentY += child.Height + spacing;
+            }
+        }
+
+        public void ArrangeChildrenHorizontally(float spacing = 5f)
+        {
+            float currentX = 0;
+
+            foreach (var child in children)
+            {
+                if (!child.Visible) continue;
+
+                child.X = currentX;
+                currentX += child.Width + spacing;
+            }
+        }
+
+        // Método para organizar en grid
+        public void ArrangeChildrenInGrid(int columns, float spacingX = 5f, float spacingY = 5f)
+        {
+            if (columns <= 0) return;
+
+            int row = 0;
+            int col = 0;
+
+            foreach (var child in children)
+            {
+                if (!child.Visible) continue;
+
+                child.X = col * (child.Width + spacingX);
+                child.Y = row * (child.Height + spacingY);
+
+                col++;
+                if (col >= columns)
+                {
+                    col = 0;
+                    row++;
+                }
+            }
+        }
+
+        // Override del método Draw
         public override void Draw()
         {
-            if (!IsVisible) return;
+            if (!Visible) return;
 
-            // Draw background
-            if (BackgroundColor.A > 0)
-                Renderer.DrawRect(Bounds.X, Bounds.Y, Bounds.Width, Bounds.Height, BackgroundColor);
+            var absPos = GetAbsolutePosition();
 
-            // Draw border
-            if (BorderColor.A > 0 && BorderThickness > 0)
-                Renderer.DrawRectOutline(Bounds.X, Bounds.Y, Bounds.Width, Bounds.Height, BorderColor, BorderThickness);
+            // Dibujar fondo del panel
+            Renderer.DrawRect(new Rect(absPos.X, absPos.Y, Width, Height), BackColor);
 
-            // Handle child clipping
-            if (_clipChildren)
-                Renderer.PushClip(GetContentRect());
-
-            // Draw children
-            foreach (var child in _children.Where(c => c.IsVisible))
+            // Dibujar borde si está habilitado
+            if (ShowBorder)
             {
-                var originalBounds = child.Bounds;
-
-                // Apply panel transformation (position + padding)
-                child.Bounds = new Rect(
-                    Bounds.X + originalBounds.X + Padding.Left + child.Margin.Left,
-                    Bounds.Y + originalBounds.Y + Padding.Top + child.Margin.Top,
-                    originalBounds.Width,
-                    originalBounds.Height
-                );
-
-                child.Draw();
-                child.Bounds = originalBounds;
+                DrawBorder(absPos);
             }
 
-            if (_clipChildren)
-                Renderer.PopClip();
-        }
-
-        public override void Update()
-        {
-            if (!IsVisible) return;
-
-            base.Update();
-
-            // Update children
-            foreach (var child in _children)
+            // Dibujar todos los controles hijos
+            foreach (var child in children)
             {
-                var originalBounds = child.Bounds;
-
-                // Apply panel transformation (position + padding)
-                child.Bounds = new Rect(
-                    Bounds.X + originalBounds.X + Padding.Left + child.Margin.Left,
-                    Bounds.Y + originalBounds.Y + Padding.Top + child.Margin.Top,
-                    originalBounds.Width,
-                    originalBounds.Height
-                );
-
-                child.Update();
-                child.Bounds = originalBounds;
+                if (child.Visible)
+                {
+                    if (child is UIContainer container)
+                    {
+                        container.RenderWithChildren();
+                    }
+                    else
+                    {
+                        child.Draw();
+                    }
+                }
             }
         }
 
-        public override void Measure(Vector2 availableSize)
+        private void DrawBorder(Vector2 absPos)
         {
-            var contentSize = new Vector2(
-                availableSize.X - Margin.Left - Margin.Right - Padding.Left - Padding.Right,
-                availableSize.Y - Margin.Top - Margin.Bottom - Padding.Top - Padding.Bottom
+            var borderRect = new Rect(absPos.X, absPos.Y, Width, Height);
+
+            switch (BorderStyle)
+            {
+                case BorderStyle.Solid:
+                    Renderer.DrawRectOutline(borderRect, BorderColor, BorderWidth);
+                    break;
+
+                case BorderStyle.Dashed:
+                    // Implementación básica de borde punteado
+                    DrawDashedBorder(borderRect);
+                    break;
+
+                case BorderStyle.Dotted:
+                    // Implementación básica de borde puntos
+                    DrawDottedBorder(borderRect);
+                    break;
+
+                case BorderStyle.Double:
+                    // Borde doble
+                    DrawDoubleBorder(borderRect);
+                    break;
+            }
+        }
+
+        private void DrawDashedBorder(Rect rect)
+        {
+            // Implementación básica - puedes mejorarla según tu sistema de renderizado
+            float dashLength = 5f;
+            float gapLength = 3f;
+
+            // Top border
+            DrawDashedLine(rect.X, rect.Y, rect.X + rect.Width, rect.Y, dashLength, gapLength);
+            // Bottom border
+            DrawDashedLine(rect.X, rect.Y + rect.Height, rect.X + rect.Width, rect.Y + rect.Height, dashLength, gapLength);
+            // Left border
+            DrawDashedLine(rect.X, rect.Y, rect.X, rect.Y + rect.Height, dashLength, gapLength);
+            // Right border
+            DrawDashedLine(rect.X + rect.Width, rect.Y, rect.X + rect.Width, rect.Y + rect.Height, dashLength, gapLength);
+        }
+
+        private void DrawDottedBorder(Rect rect)
+        {
+            // Implementación básica de puntos
+            float dotSize = 2f;
+            float spacing = 4f;
+
+            // Similar a dashed pero con puntos más pequeños
+            DrawDashedLine(rect.X, rect.Y, rect.X + rect.Width, rect.Y, dotSize, spacing);
+            DrawDashedLine(rect.X, rect.Y + rect.Height, rect.X + rect.Width, rect.Y + rect.Height, dotSize, spacing);
+            DrawDashedLine(rect.X, rect.Y, rect.X, rect.Y + rect.Height, dotSize, spacing);
+            DrawDashedLine(rect.X + rect.Width, rect.Y, rect.X + rect.Width, rect.Y + rect.Height, dotSize, spacing);
+        }
+
+        private void DrawDoubleBorder(Rect rect)
+        {
+            // Borde exterior
+            Renderer.DrawRectOutline(rect, BorderColor, BorderWidth);
+
+            // Borde interior
+            float innerOffset = BorderWidth + 2f;
+            var innerRect = new Rect(
+                rect.X + innerOffset,
+                rect.Y + innerOffset,
+                rect.Width - (2 * innerOffset),
+                rect.Height - (2 * innerOffset)
             );
 
-            // Measure children first
-            foreach (var child in _children)
+            if (innerRect.Width > 0 && innerRect.Height > 0)
             {
-                child.Measure(contentSize);
-            }
-
-            // Calculate desired size based on children
-            if (_children.Count > 0)
-            {
-                float maxWidth = _children.Max(c => c.DesiredSize.X);
-                float maxHeight = _children.Max(c => c.DesiredSize.Y);
-
-                DesiredSize = new Vector2(
-                    maxWidth + Padding.Left + Padding.Right + Margin.Left + Margin.Right,
-                    maxHeight + Padding.Top + Padding.Bottom + Margin.Top + Margin.Bottom
-                );
-            }
-            else
-            {
-                DesiredSize = new Vector2(
-                    availableSize.X,
-                    availableSize.Y
-                );
+                Renderer.DrawRectOutline(innerRect, BorderColor, BorderWidth);
             }
         }
 
-        public override void Arrange(Rect finalRect)
+        private void DrawDashedLine(float x1, float y1, float x2, float y2, float dashLength, float gapLength)
         {
-            base.Arrange(finalRect);
+            float totalLength = (float)Math.Sqrt(Math.Pow(x2 - x1, 2) + Math.Pow(y2 - y1, 2));
+            float unitX = (x2 - x1) / totalLength;
+            float unitY = (y2 - y1) / totalLength;
 
-            var contentRect = GetContentRect();
+            float currentLength = 0;
+            bool drawing = true;
 
-            // Arrange children
-            foreach (var child in _children)
+            while (currentLength < totalLength)
             {
-                child.Arrange(new Rect(
-                    contentRect.X + child.Margin.Left,
-                    contentRect.Y + child.Margin.Top,
-                    child.DesiredSize.X - child.Margin.Left - child.Margin.Right,
-                    child.DesiredSize.Y - child.Margin.Top - child.Margin.Bottom
-                ));
+                float segmentLength = drawing ? dashLength : gapLength;
+                float endLength = Math.Min(currentLength + segmentLength, totalLength);
+
+                if (drawing)
+                {
+                    float startX = x1 + unitX * currentLength;
+                    float startY = y1 + unitY * currentLength;
+                    float endX = x1 + unitX * endLength;
+                    float endY = y1 + unitY * endLength;
+
+                    // Dibujar segmento (usando rect muy delgado como línea)
+                    Renderer.DrawRect(new Rect(startX, startY, endX - startX, BorderWidth), BorderColor);
+                }
+
+                currentLength = endLength;
+                drawing = !drawing;
             }
         }
 
-        public void AddChild(UIControl child)
-        {
-            if (child != null && !_children.Contains(child))
-            {
-                _children.Add(child);
-                child.Parent = this;
-                InvalidateLayout();
-            }
-        }
-
-        public void RemoveChild(UIControl child)
-        {
-            if (child != null && _children.Contains(child))
-            {
-                _children.Remove(child);
-                child.Parent = null;
-                InvalidateLayout();
-            }
-        }
-
+        // Método para limpiar todos los controles hijos
         public void ClearChildren()
         {
-            foreach (var child in _children)
+            foreach (var child in children.ToArray())
             {
-                child.Parent = null;
+                RemoveChild(child);
             }
-            _children.Clear();
-            InvalidateLayout();
         }
 
-        protected override void InvalidateLayout()
+        // Método para encontrar controles por tipo
+        public List<T> FindControlsByType<T>() where T : UIControl
         {
-            base.InvalidateLayout();
-           
+            var result = new List<T>();
+
+            foreach (var child in children)
+            {
+                if (child is T typedControl)
+                {
+                    result.Add(typedControl);
+                }
+
+                if (child is UIContainer container)
+                {
+                    result.AddRange(container.FindControlsByType<T>());
+                }
+            }
+
+            return result;
         }
+
+        // Método para verificar si un punto está dentro del área de contenido
+        public bool ContainsInContent(Vector2 point)
+        {
+            return GetAbsoluteContentArea().Contains(point);
+        }
+
+        // Override del método Contains para considerar el padding
+        public override bool Contains(Vector2 point)
+        {
+            return GetAbsoluteBounds().Contains(point);
+        }
+
+        // Método para obtener el control hijo bajo el mouse dentro del área de contenido
+        public UIControl? GetControlUnderMouse(Vector2 mousePos)
+        {
+            if (!Visible || !Enabled) return null;
+
+            // Verificar si el mouse está dentro del área de contenido
+            if (!GetAbsoluteContentArea().Contains(mousePos))
+            {
+                // Si está fuera del área de contenido pero dentro del panel, retornar el panel
+                return Contains(mousePos) ? this : null;
+            }
+
+            // Buscar en los hijos
+            for (int i = children.Count - 1; i >= 0; i--)
+            {
+                var child = children[i];
+                if (!child.Visible || !child.Enabled) continue;
+
+                if (child is UIContainer container)
+                {
+                    var found = container.GetControlUnderMouse(mousePos);
+                    if (found != null) return found;
+                }
+                else if (child.Contains(mousePos))
+                {
+                    return child;
+                }
+            }
+
+            return this;
+        }
+    }
+
+    // Enum para estilos de borde
+    public enum BorderStyle
+    {
+        None,
+        Solid,
+        Dashed,
+        Dotted,
+        Double
     }
 }

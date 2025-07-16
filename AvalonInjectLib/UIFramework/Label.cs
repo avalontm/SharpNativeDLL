@@ -1,13 +1,18 @@
-﻿using AvalonInjectLib;
-using static AvalonInjectLib.Structs;
+﻿using static AvalonInjectLib.Structs;
+
 namespace AvalonInjectLib.UIFramework
 {
     public class Label : UIControl
     {
-        private string _text = "";
-        private Color _textColor = Color.White;
-        private int _fontSize = 12;
-        private HorizontalAlignment _textAlignment = HorizontalAlignment.Left;
+        // Constantes por defecto
+        private const float DEFAULT_WIDTH = 100f;
+        private const float DEFAULT_HEIGHT = 24f;
+
+        // Propiedades de texto
+        private string _text = string.Empty;
+        private Font? _font;
+        private HorizontalAlignment _horizontalAlignment = HorizontalAlignment.Left;
+        private VerticalAlignment _verticalAlignment = VerticalAlignment.Top;
         private bool _autoSize = true;
 
         public string Text
@@ -18,34 +23,40 @@ namespace AvalonInjectLib.UIFramework
                 if (_text != value)
                 {
                     _text = value;
-                    InvalidateMeasure(); // Notificar al layout que debe recalcular
+                    if (_autoSize) UpdateAutoSize();
                 }
             }
         }
 
-        public Color TextColor
+        public Font? Font
         {
-            get => _textColor;
-            set => _textColor = value;
-        }
-
-        public int FontSize
-        {
-            get => _fontSize;
+            get => _font;
             set
             {
-                if (_fontSize != value)
+                if (_font != value)
                 {
-                    _fontSize = value;
-                    InvalidateMeasure();
+                    _font = value;
+                    if (_autoSize) UpdateAutoSize();
                 }
             }
         }
 
-        public HorizontalAlignment TextAlignment
+        public HorizontalAlignment HorizontalAlignment
         {
-            get => _textAlignment;
-            set => _textAlignment = value;
+            get => _horizontalAlignment;
+            set
+            {
+                _horizontalAlignment = value;
+            }
+        }
+
+        public VerticalAlignment VerticalAlignment
+        {
+            get => _verticalAlignment;
+            set
+            {
+                _verticalAlignment = value;
+            }
         }
 
         public bool AutoSize
@@ -56,111 +67,86 @@ namespace AvalonInjectLib.UIFramework
                 if (_autoSize != value)
                 {
                     _autoSize = value;
-                    InvalidateMeasure();
+                    if (_autoSize) UpdateAutoSize();
                 }
             }
         }
 
+        public Color TextShadowColor { get; set; } = Color.Transparent;
+        public Vector2 TextShadowOffset { get; set; } = new Vector2(1, 1);
+
         public Label()
         {
-            BackgroundColor = Color.Transparent;
-        }
-
-        public Label(string text) : this()
-        {
-            Text = text;
+            Font = Font.GetDefaultFont();
+            Width = DEFAULT_WIDTH;
+            Height = DEFAULT_HEIGHT;
+            BackColor = Color.Transparent;
+            ForeColor = Color.White;
         }
 
         public override void Draw()
         {
-            if (!IsVisible || string.IsNullOrEmpty(Text)) return;
+            if (!Visible || string.IsNullOrEmpty(Text)) return;
 
-            // Draw background
-            if (BackgroundColor.A > 0)
-                Renderer.DrawRect(Bounds, BackgroundColor);
+            var absPos = GetAbsolutePosition();
+            var textSize = MeasureText();
 
-            // CORRECCIÓN: Calcular área de contenido respetando padding
-            var contentArea = new Rect(
-                Bounds.X + Padding.Left,
-                Bounds.Y + Padding.Top,
-                Math.Max(0, Bounds.Width - Padding.Left - Padding.Right),
-                Math.Max(0, Bounds.Height - Padding.Top - Padding.Bottom)
-            );
+            // Calcular posición basada en alineación
+            float textX = CalculateTextX(absPos.X, textSize.X);
+            float textY = CalculateTextY(absPos.Y, textSize.Y);
 
-            // CORRECCIÓN: Verificar que hay espacio para dibujar
-            if (contentArea.Width <= 0 || contentArea.Height <= 0) return;
+            // Dibujar sombra si está configurada
+            DrawTextShadow(textX, textY);
 
-            var textSize = Renderer.MeasureText(Text, FontSize);
-
-            // CORRECCIÓN: Calcular posición X respetando el área de contenido
-            float textX = contentArea.X;
-            if (TextAlignment == HorizontalAlignment.Center)
-            {
-                textX = contentArea.X + (contentArea.Width - textSize.X) / 2;
-            }
-            else if (TextAlignment == HorizontalAlignment.Right)
-            {
-                textX = contentArea.X + contentArea.Width - textSize.X;
-            }
-
-            // CORRECCIÓN: Centrar verticalmente en el área de contenido
-            float textY = contentArea.Y + (contentArea.Height - textSize.Y) / 2;
-
-            // CORRECCIÓN: Asegurar que el texto no se dibuje fuera del área de contenido
-            textX = Math.Max(contentArea.X, Math.Min(textX, contentArea.X + contentArea.Width - textSize.X));
-            textY = Math.Max(contentArea.Y, Math.Min(textY, contentArea.Y + contentArea.Height - textSize.Y));
-
-            Renderer.DrawText(Text, textX, textY, TextColor, FontSize);
+            // Dibujar texto principal
+            Renderer.DrawText(Text, textX, textY, Enabled ? ForeColor : Color.Gray, Font);
         }
 
-        // CORRECCIÓN: Implementar MeasureCore en lugar de Measure
-        protected override Vector2 MeasureCore(Vector2 availableSize)
+        private float CalculateTextX(float baseX, float textWidth)
         {
-            if (!IsVisible)
+            return HorizontalAlignment switch
             {
-                return Vector2.Zero;
-            }
-
-            if (string.IsNullOrEmpty(Text))
-            {
-                // Sin texto, el tamaño deseado es solo el padding
-                return new Vector2(
-                    Padding.Left + Padding.Right,
-                    Padding.Top + Padding.Bottom
-                );
-            }
-
-            var textSize = Renderer.MeasureText(Text, FontSize);
-
-            if (_autoSize)
-            {
-                // CORRECCIÓN: AutoSize - usar el tamaño del texto + padding
-                return new Vector2(
-                    textSize.X + Padding.Left + Padding.Right,
-                    textSize.Y + Padding.Top + Padding.Bottom
-                );
-            }
-            else
-            {
-                // CORRECCIÓN: No AutoSize - usar el espacio disponible, pero asegurar espacio mínimo para el texto
-                var minWidth = textSize.X + Padding.Left + Padding.Right;
-                var minHeight = textSize.Y + Padding.Top + Padding.Bottom;
-
-                return new Vector2(
-                    Math.Max(minWidth, availableSize.X),
-                    Math.Max(minHeight, availableSize.Y)
-                );
-            }
+                HorizontalAlignment.Center => baseX + (Width - textWidth) / 2,
+                HorizontalAlignment.Right => baseX + Width - textWidth,
+                _ => baseX // Left
+            };
         }
 
-        // CORRECCIÓN: Eliminar el override de Measure ya que debe usar MeasureCore
-        // public override void Measure(Vector2 availableSize) - REMOVIDO
-
-        public override void Update()
+        private float CalculateTextY(float baseY, float textHeight)
         {
-            base.Update();
-            // CORRECCIÓN: Agregar lógica de actualización si es necesaria
-            // Por ejemplo, animaciones de texto, parpadeo, etc.
+            return VerticalAlignment switch
+            {
+                VerticalAlignment.Center => baseY + (Height - textHeight) / 2,
+                VerticalAlignment.Bottom => baseY + Height - textHeight,
+                _ => baseY // Top
+            };
         }
+
+        private void DrawTextShadow(float textX, float textY)
+        {
+            if (TextShadowColor.A > 0)
+            {
+                Renderer.DrawText(Text,
+                    textX + TextShadowOffset.X,
+                    textY + TextShadowOffset.Y,
+                    TextShadowColor,
+                    Font);
+            }
+        }
+
+        private void UpdateAutoSize()
+        {
+            if (string.IsNullOrEmpty(Text)) return;
+
+            var textSize = MeasureText();
+            Width = textSize.X;
+            Height = textSize.Y;
+        }
+
+        private Vector2 MeasureText()
+        {
+            return Font.MeasureText(Text);
+        }
+
     }
 }

@@ -604,24 +604,63 @@ namespace AvalonInjectLib
         }
 
 
-        public struct Rectangle
-        {
-            private int x; // Do not rename (binary serialization)
-            private int y; // Do not rename (binary serialization)
-            private int width; // Do not rename (binary serialization)
-            private int height; // Do not rename (binary serialization)
+    public struct Rectangle : IEquatable<Rectangle>
+    {
+        public int X; 
+        public int Y;
+        public int Width;
+        public int Height;
 
-            public Rectangle(int x, int y, int width, int height)
-            {
-                this.x = x;
-                this.y = y;
-                this.width = width;
-                this.height = height;
-            }
+        public Rectangle(int x, int y, int width, int height)
+        {
+            X = x;
+            Y = y;
+            Width = width;
+            Height = height;
         }
 
-        // Estructura WINDOWPLACEMENT para obtener el estado de la ventana
-        [Serializable]
+        // Sobrecarga del operador ==
+        public static bool operator ==(Rectangle left, Rectangle right)
+        {
+            return left.Equals(right);
+        }
+
+        // Sobrecarga del operador !=
+        public static bool operator !=(Rectangle left, Rectangle right)
+        {
+            return !(left == right);
+        }
+
+        // Implementación de IEquatable<Rectangle>
+        public bool Equals(Rectangle other)
+        {
+            return X == other.X &&
+                   Y == other.Y &&
+                   Width == other.Width &&
+                   Height == other.Height;
+        }
+
+        // Sobrescritura de Equals para compatibilidad con object.Equals
+        public override bool Equals(object obj)
+        {
+            return obj is Rectangle other && Equals(other);
+        }
+
+        // Sobrescritura de GetHashCode para consistencia con Equals
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(X, Y, Width, Height);
+        }
+
+        // Opcional: Sobrescritura de ToString para mejor legibilidad
+        public override string ToString()
+        {
+            return $"Rectangle(X={X}, Y={Y}, Width={Width}, Height={Height})";
+        }
+    }
+
+    // Estructura WINDOWPLACEMENT para obtener el estado de la ventana
+    [Serializable]
         [StructLayout(LayoutKind.Sequential)]
         public struct WINDOWPLACEMENT
         {

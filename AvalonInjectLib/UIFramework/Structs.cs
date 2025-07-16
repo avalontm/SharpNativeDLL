@@ -33,6 +33,16 @@ namespace AvalonInjectLib.UIFramework
 
         public Color WithAlpha(byte a) => new Color(R, G, B, a);
 
+        public Color WithAlpha(float alpha)
+        {
+            // Asegurar que el valor alpha esté en el rango 0-1
+            float clampedAlpha = Math.Clamp(alpha, 0f, 1f);
+
+            // Convertir a byte (0-255) y crear nuevo color
+            byte alphaByte = (byte)(clampedAlpha * 255);
+            return new Color(R, G, B, alphaByte);
+        }
+
         public Color Lerp(Color other, float t)
         {
             t = Math.Clamp(t, 0, 1);
@@ -163,11 +173,32 @@ namespace AvalonInjectLib.UIFramework
             return Luminance > 0.5f ? Black : White;
         }
 
+        public static Color FromArgb(byte r, byte g, byte b)
+        {
+            return new Color(r, g, b, 255);
+        }
+
         public static Color FromArgb(byte a, byte r, byte g, byte b)
         {
             return new Color(r, g, b, a);
         }
     }
+
+    /// <summary>
+    /// Modos de ajuste de la imagen
+    /// </summary>
+    public enum StretchMode
+    {
+        /// <summary>No ajustar - mostrar tamaño original</summary>
+        None,
+        /// <summary>Estirar para llenar todo el espacio (puede distorsionar)</summary>
+        Fill,
+        /// <summary>Mantener relación de aspecto ajustando al tamaño disponible (sin recortar)</summary>
+        Uniform,
+        /// <summary>Mantener relación de aspecto llenando todo el espacio (puede recortar)</summary>
+        UniformToFill
+    }
+
 
     /// <summary>
     /// Unidad de medida para definir el tamaño de columnas y filas
@@ -300,4 +331,3 @@ namespace AvalonInjectLib.UIFramework
         };
     }
 }
-

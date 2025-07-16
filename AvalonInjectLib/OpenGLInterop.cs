@@ -991,8 +991,9 @@ namespace AvalonInjectLib
         }
         #endregion
 
-        
+
         // Constantes OpenGL
+        internal const int GL_NO_ERROR = 0;
         internal const int GL_TEXTURE_2D = 0x0DE1;
         internal const int GL_R8 = 0x8229;
         internal const int GL_RED = 0x1903;
@@ -1021,6 +1022,15 @@ namespace AvalonInjectLib
         internal const int GL_GREATER = 0x0204;
         internal const int GL_RGBA = 0x1908;
         internal const int GL_MODELVIEW = 0x1700;
+        // Constantes de formatos
+        internal const int GL_RGB = 0x1907;
+        internal const int GL_RG = 0x8227;
+
+        // Constantes de formatos internos
+        internal const int GL_RGB8 = 0x8051;
+        internal const int GL_RGBA8 = 0x8058;
+        internal const int GL_RG8 = 0x822B;
+
         // Shading model constant
         internal const int GL_SMOOTH = 0x1D01;
         internal const int GL_VIEWPORT = 0x0BA2;

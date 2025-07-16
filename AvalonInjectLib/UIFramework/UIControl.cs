@@ -1,445 +1,214 @@
 ﻿using static AvalonInjectLib.Structs;
+using System;
 
 namespace AvalonInjectLib.UIFramework
 {
     public abstract class UIControl
     {
-        private Rect _bounds;
-        private Thickness _margin = new Thickness(0);
-        private Thickness _padding = new Thickness(0);
-        private bool _measureInvalidated = true;
-        private bool _arrangeInvalidated = true;
-        private bool _layoutInvalidated = true;
-        private bool _isInvalidating = false; // Prevenir recursión infinita
-
-        // Propiedades de Grid
-        private int _gridColumn = 0;
-        private int _gridRow = 0;
-        private int _gridColumnSpan = 1;
-        private int _gridRowSpan = 1;
-
-        public Vector2 DesiredSize { get; protected set; }
-
-        public Rect Bounds
-        {
-            get => _bounds;
-            set
-            {
-                if (_bounds.Equals(value)) return;
-
-                _bounds = value;
-                OnBoundsChanged();
-                InvalidateArrange();
-            }
-        }
-
-        public float Width
-        {
-            get => _bounds.Width;
-            set
-            {
-                if (float.IsNaN(value) || float.IsInfinity(value)) return;
-                if (_bounds.Width.Equals(value)) return;
-
-                _bounds.Width = value;
-                OnBoundsChanged();
-                InvalidateArrange();
-            }
-        }
-
-        public float Height
-        {
-            get => _bounds.Height;
-            set
-            {
-                if (float.IsNaN(value) || float.IsInfinity(value)) return;
-                if (_bounds.Height.Equals(value)) return;
-
-                _bounds.Height = value;
-                OnBoundsChanged();
-                InvalidateArrange();
-            }
-        }
-
-        public Thickness Margin
-        {
-            get => _margin;
-            set
-            {
-                if (_margin.Equals(value)) return;
-
-                _margin = value;
-                InvalidateMeasure();
-            }
-        }
-
-        public Thickness Padding
-        {
-            get => _padding;
-            set
-            {
-                if (_padding.Equals(value)) return;
-
-                _padding = value;
-                InvalidateMeasure();
-            }
-        }
-
-        // Propiedades de Grid
-        public int GridColumn
-        {
-            get => _gridColumn;
-            set
-            {
-                if (_gridColumn == value) return;
-                _gridColumn = Math.Max(0, value);
-                InvalidateArrange();
-            }
-        }
-
-        public int GridRow
-        {
-            get => _gridRow;
-            set
-            {
-                if (_gridRow == value) return;
-                _gridRow = Math.Max(0, value);
-                InvalidateArrange();
-            }
-        }
-
-        public int GridColumnSpan
-        {
-            get => _gridColumnSpan;
-            set
-            {
-                if (_gridColumnSpan == value) return;
-                _gridColumnSpan = Math.Max(1, value);
-                InvalidateArrange();
-            }
-        }
-
-        public int GridRowSpan
-        {
-            get => _gridRowSpan;
-            set
-            {
-                if (_gridRowSpan == value) return;
-                _gridRowSpan = Math.Max(1, value);
-                InvalidateArrange();
-            }
-        }
-
-        public Color BackgroundColor = Color.Transparent;
-        public bool IsVisible { get; set; } = true;
-        public bool IsEnabled = true;
-        public bool IsHovered;
-        public bool WasMouseDown;
-        public string Tag = "";
-        public object UserData;
-
-        // Propiedades de layout
-        public HorizontalAlignment HorizontalAlignment { get; set; } = HorizontalAlignment.Stretch;
-        public VerticalAlignment VerticalAlignment { get; set; } = VerticalAlignment.Stretch;
+        // Propiedades básicas
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float Width { get; set; } = 100f;
+        public float Height { get; set; } = 25f;
+        public bool Visible { get; set; } = true;
+        public bool Enabled { get; set; } = true;
+        public string Name { get; set; } = string.Empty;
+        public bool HasFocus { get; set; }
+        public Color BackColor { get; set; } = Color.Black;
+        public Color ForeColor { get; set; } = Color.White;
+        public UIControl? Parent { get; set; }
+        public object Tag { get; set; }
+        public bool IsFocusable { get; internal set; } = false;
 
         // Eventos
-        public Action<Vector2> OnClick;
-        public Action<Vector2> OnMouseDown;
-        public Action<Vector2> OnMouseUp;
-        public Action OnMouseEnter;
-        public Action OnMouseLeave;
-        public Action OnFocusGained;
-        public Action OnFocusLost;
-        public Action OnLayoutUpdated;
+        public Action<Vector2>? Click;
+        public Action<Vector2>? MouseDown;
+        public Action<Vector2>? MouseUp;
+        public Action<Vector2>? MouseMove;
+        public Action<Vector2>? MouseEnter;
+        public Action<Vector2>? MouseLeave;
+        public Action<char>? KeyPress;
 
-        /// <summary>
-        /// Obtiene o establece el control padre de este control
-        /// </summary>
-        public UIControl Parent { get; set; }
+        private bool _isHovered;
+        private bool _isPressed;
 
-        public bool HasFocus => UIFrameworkSystem.FocusedControl == this;
-
-        /// <summary>
-        /// Indica si este control está ubicado dentro de un Grid
-        /// </summary>
-        public bool IsInGrid => Parent != null && Parent.GetType().Name.Contains("Grid");
-
-        /// <summary>
-        /// Obtiene información sobre la posición del control en el Grid
-        /// </summary>
-        public GridPosition GetGridPosition()
+        protected UIControl()
         {
-            return new GridPosition
-            {
-                Column = GridColumn,
-                Row = GridRow,
-                ColumnSpan = GridColumnSpan,
-                RowSpan = GridRowSpan,
-                IsInGrid = IsInGrid
-            };
+
         }
 
-        /// <summary>
-        /// Establece la posición del control en el Grid
-        /// </summary>
-        public void SetGridPosition(int column, int row, int columnSpan = 1, int rowSpan = 1)
+        public virtual void Update()
         {
-            GridColumn = column;
-            GridRow = row;
-            GridColumnSpan = columnSpan;
-            GridRowSpan = rowSpan;
+            if (!Visible || !Enabled || !UIEventSystem.IsSCreenFocus) return;
+            
+            Vector2 mousePos = UIEventSystem.MousePosition;
+            bool isMouseOver = Contains(mousePos);
+
+            // SIEMPRE ejecutar MouseMove cuando el mouse está sobre el control
+            if (isMouseOver)
+            {
+                OnMouseMove(mousePos);
+                MouseMove?.Invoke(mousePos);
+            }
+
+            // Manejar estado hover
+            if (isMouseOver)
+            {
+                if (!_isHovered)
+                {
+                    _isHovered = true;
+                    OnMouseEnter(mousePos);
+                    MouseEnter?.Invoke(mousePos);
+                }
+            }
+            else
+            {
+                if (_isHovered)
+                {
+                    _isHovered = false;
+                    OnMouseLeave(mousePos);
+                    MouseLeave?.Invoke(mousePos);
+                }
+            }
+
+            // Manejar clics del mouse - MouseDown
+            if (UIEventSystem.IsMousePressed && !_isPressed && isMouseOver)
+            {
+                // Click iniciado en este control
+                _isPressed = true;
+                OnMouseDown(mousePos);
+                MouseDown?.Invoke(mousePos);
+            }
+            // Manejar MouseUp - CORREGIDO: ejecutar siempre que se suelte el mouse si estaba presionado
+            else if (!UIEventSystem.IsMousePressed && _isPressed)
+            {
+                UIFrameworkSystem.SetControl(this);
+                bool isValidClick = UIFrameworkSystem.IsValidClick();
+
+                // Click liberado
+                _isPressed = false;
+               
+                // SIEMPRE ejecutar MouseUp cuando se suelta el mouse
+                OnMouseUp(mousePos);
+                MouseUp?.Invoke(mousePos);
+
+                // Solo ejecutar Click si es un click válido
+                if (isValidClick)
+                {
+                    OnClick(mousePos);
+                    Click?.Invoke(mousePos);
+                }
+
+
+                WinInterop.Sleep(10);
+                UIFrameworkSystem.ClearFocusControls();
+            }
+            
+            // Manejar teclado si tiene el foco
+            if (HasFocus && UIEventSystem.LastKeyPressed.HasValue)
+            {
+                OnKeyPress(UIEventSystem.LastKeyPressed.Value);
+                UIEventSystem.LastKeyPressed = null;
+            }
         }
 
         public abstract void Draw();
 
-        public virtual void Update()
+        // Manejo de eventos protegidos
+        protected virtual void OnClick(Vector2 mousePos) { }
+        protected virtual void OnMouseMove(Vector2 mousePos) { }
+        protected virtual void OnMouseDown(Vector2 mousePos) { }
+        protected virtual void OnMouseUp(Vector2 mousePos) { }
+        protected virtual void OnKeyPress(char key) { }
+        protected virtual void OnMouseEnter(Vector2 mousePos) { }
+        protected virtual void OnMouseLeave(Vector2 mousePos) { }
+
+        /// <summary>
+        /// Método público para simular un evento MouseMove en el control
+        /// </summary>
+        /// <param name="mousePos">Posición del mouse</param>
+        public void SimulateMouseMove(Vector2 mousePos)
         {
-            if (!IsVisible || !IsEnabled) return;
-
-            // Procesar eventos solo si es visible y está habilitado
-            UIEventSystem.ProcessEvents(this);
-
-            // Actualizar layout si es necesario
-            if (_layoutInvalidated)
-            {
-                UpdateLayout();
-            }
+            OnMouseMove(mousePos);
+            MouseMove?.Invoke(mousePos);
         }
 
-        protected virtual void UpdateLayout()
-        {
-            if (_measureInvalidated)
-            {
-                Measure(new Vector2(float.PositiveInfinity));
-                _measureInvalidated = false;
-            }
-
-            if (_arrangeInvalidated)
-            {
-                // Si no tenemos padre, usamos nuestros propios bounds
-                Arrange(Parent?.GetContentRect() ?? Bounds);
-                _arrangeInvalidated = false;
-            }
-
-            _layoutInvalidated = false;
-        }
-
-        protected virtual void OnBoundsChanged()
-        {
-            // Puede ser sobrescrito por clases derivadas
-        }
-
-        public virtual void Measure(Vector2 availableSize)
-        {
-            if (!IsVisible)
-            {
-                DesiredSize = Vector2.Zero;
-                return;
-            }
-
-            // Validar entrada
-            if (float.IsNaN(availableSize.X) || float.IsNaN(availableSize.Y))
-            {
-                DesiredSize = Vector2.Zero;
-                return;
-            }
-
-            // Restamos los márgenes del tamaño disponible
-            var availableSizeAfterMargins = new Vector2(
-                Math.Max(0, availableSize.X - Margin.Left - Margin.Right),
-                Math.Max(0, availableSize.Y - Margin.Top - Margin.Bottom)
-            );
-
-            // Implementación base - las clases derivadas deben sobrescribir esto
-            var desiredSizeWithoutMargins = MeasureCore(availableSizeAfterMargins);
-
-            DesiredSize = new Vector2(
-                desiredSizeWithoutMargins.X + Margin.Left + Margin.Right,
-                desiredSizeWithoutMargins.Y + Margin.Top + Margin.Bottom
-            );
-        }
-
-        protected virtual Vector2 MeasureCore(Vector2 availableSize)
-        {
-            // Implementación por defecto: usar el tamaño mínimo necesario
-            return new Vector2(
-                Math.Max(0, Padding.Left + Padding.Right),
-                Math.Max(0, Padding.Top + Padding.Bottom)
-            );
-        }
-
-        public virtual void Arrange(Rect finalRect)
-        {
-            if (!IsVisible) return;
-
-            // Aplicar márgenes
-            var arrangeRect = new Rect(
-                finalRect.X + Margin.Left,
-                finalRect.Y + Margin.Top,
-                Math.Max(0, finalRect.Width - Margin.Left - Margin.Right),
-                Math.Max(0, finalRect.Height - Margin.Top - Margin.Bottom)
-            );
-
-            // Calcular tamaño sin márgenes
-            var desiredSizeWithoutMargins = new Vector2(
-                Math.Max(0, DesiredSize.X - Margin.Left - Margin.Right),
-                Math.Max(0, DesiredSize.Y - Margin.Top - Margin.Bottom)
-            );
-
-            // Aplicar alineación horizontal
-            float x = arrangeRect.X;
-            float width = arrangeRect.Width;
-
-            switch (HorizontalAlignment)
-            {
-                case HorizontalAlignment.Left:
-                    width = Math.Min(desiredSizeWithoutMargins.X, arrangeRect.Width);
-                    break;
-                case HorizontalAlignment.Center:
-                    width = Math.Min(desiredSizeWithoutMargins.X, arrangeRect.Width);
-                    x += (arrangeRect.Width - width) / 2;
-                    break;
-                case HorizontalAlignment.Right:
-                    width = Math.Min(desiredSizeWithoutMargins.X, arrangeRect.Width);
-                    x += arrangeRect.Width - width;
-                    break;
-                case HorizontalAlignment.Stretch:
-                    // Usar todo el ancho disponible
-                    break;
-            }
-
-            // Aplicar alineación vertical
-            float y = arrangeRect.Y;
-            float height = arrangeRect.Height;
-
-            switch (VerticalAlignment)
-            {
-                case VerticalAlignment.Top:
-                    height = Math.Min(desiredSizeWithoutMargins.Y, arrangeRect.Height);
-                    break;
-                case VerticalAlignment.Center:
-                    height = Math.Min(desiredSizeWithoutMargins.Y, arrangeRect.Height);
-                    y += (arrangeRect.Height - height) / 2;
-                    break;
-                case VerticalAlignment.Bottom:
-                    height = Math.Min(desiredSizeWithoutMargins.Y, arrangeRect.Height);
-                    y += arrangeRect.Height - height;
-                    break;
-                case VerticalAlignment.Stretch:
-                    // Usar toda la altura disponible
-                    break;
-            }
-
-            var finalBounds = new Rect(x, y, width, height);
-            ArrangeCore(finalBounds);
-
-            Bounds = finalBounds;
-            OnLayoutUpdated?.Invoke();
-        }
-
-        protected virtual void ArrangeCore(Rect finalRect)
-        {
-            // Implementación por defecto: usar el rectángulo tal como viene
-        }
-
-        public Rect GetContentRect()
-        {
-            return new Rect(
-                Bounds.X + Padding.Left,
-                Bounds.Y + Padding.Top,
-                Math.Max(0, Bounds.Width - Padding.Left - Padding.Right),
-                Math.Max(0, Bounds.Height - Padding.Top - Padding.Bottom)
-            );
-        }
-
-        protected void RequestLayoutUpdate()
-        {
-            InvalidateLayout();
-        }
-
-        public virtual void SetPosition(Vector2 position) => Bounds = new Rect(position, Bounds.Size);
-
-        public virtual void SetSize(Vector2 size)
-        {
-            Width = size.X;
-            Height = size.Y;
-        }
-
-        public virtual void SetBounds(Rect bounds) => Bounds = bounds;
-
-        public virtual void SetBounds(float x, float y, float width, float height) =>
-            Bounds = new Rect(x, y, width, height);
-
+        // Manejo de foco - MODIFICADO
         public virtual void Focus()
         {
-            if (UIFrameworkSystem.FocusedControl == this) return;
-
-            UIFrameworkSystem.FocusedControl?.OnFocusLost?.Invoke();
-            UIFrameworkSystem.FocusedControl = this;
-            OnFocusGained?.Invoke();
-        }
-
-        // Métodos para manejar el sistema de layout - CON PROTECCIÓN CONTRA RECURSIÓN
-        protected virtual void InvalidateMeasure()
-        {
-            if (_measureInvalidated || _isInvalidating) return;
-
-            _measureInvalidated = true;
-            _layoutInvalidated = true;
-
-            // Propagar hacia arriba con protección
-            if (Parent != null && !_isInvalidating)
+            if (!HasFocus)
             {
-                _isInvalidating = true;
-                Parent.InvalidateMeasure();
-                _isInvalidating = false;
+                Vector2 mousePos = UIEventSystem.MousePosition;
+                HasFocus = true;
+                UIFrameworkSystem.SetFocus(this);
+                MouseEnter?.Invoke(mousePos);
             }
         }
 
-        protected virtual void InvalidateArrange()
+        /// <summary>
+        /// Determina si el punto especificado está dentro de los límites del control
+        /// </summary>
+        /// <param name="point">Posición a verificar</param>
+        /// <returns>True si el punto está dentro del control</returns>
+        public virtual bool Contains(Vector2 point)
         {
-            if (_arrangeInvalidated || _isInvalidating) return;
+            return GetAbsoluteBounds().Contains(point);
+        }
 
-            _arrangeInvalidated = true;
-            _layoutInvalidated = true;
-
-            // Propagar hacia arriba con protección
-            if (Parent != null && !_isInvalidating)
+        /// <summary>
+        /// Obtiene la posición absoluta del control en la pantalla
+        /// </summary>
+        /// <returns>Vector2 con las coordenadas X,Y absolutas</returns>
+        public virtual Vector2 GetAbsolutePosition()
+        {
+            if (Parent == null)
             {
-                _isInvalidating = true;
-                Parent.InvalidateArrange();
-                _isInvalidating = false;
+                return new Vector2(X, Y);
+            }
+
+            // Posición acumulada a través de la jerarquía de padres
+            Vector2 parentPos = Parent.GetAbsolutePosition();
+            return new Vector2(parentPos.X + X, parentPos.Y + Y);
+        }
+
+        /// <summary>
+        /// Obtiene los límites absolutos del control en la pantalla
+        /// </summary>
+        /// <returns>Rectángulo con posición y tamaño absolutos</returns>
+        public virtual Rect GetAbsoluteBounds()
+        {
+            Vector2 pos = GetAbsolutePosition();
+            return new Rect(pos.X, pos.Y, Width, Height);
+        }
+
+        /// <summary>
+        /// Propiedad para acceder a los límites del control (coordenadas relativas al padre)
+        /// </summary>
+        public Rect Bounds
+        {
+            get => new Rect(X, Y, Width, Height);
+            set
+            {
+                X = value.X;
+                Y = value.Y;
+                Width = value.Width;
+                Height = value.Height;
+
+                // Notificar cambio de tamaño si es necesario
+                OnSizeChanged();
             }
         }
-
-        protected virtual void InvalidateLayout()
+        /// <summary>
+        /// Método llamado cuando cambia el tamaño del control
+        /// </summary>
+        protected virtual void OnSizeChanged()
         {
-            if (_isInvalidating) return;
-
-            _isInvalidating = true;
-            InvalidateMeasure();
-            InvalidateArrange();
-            _isInvalidating = false;
+            // Puede ser sobrescrito por controles hijos para manejar cambios de tamaño
         }
-    }
-
-    /// <summary>
-    /// Estructura que contiene información sobre la posición de un control en el Grid
-    /// </summary>
-    public struct GridPosition
-    {
-        public int Column;
-        public int Row;
-        public int ColumnSpan;
-        public int RowSpan;
-        public bool IsInGrid;
 
         public override string ToString()
         {
-            if (!IsInGrid)
-                return "No está en Grid";
-
-            return $"Column: {Column}, Row: {Row}, ColumnSpan: {ColumnSpan}, RowSpan: {RowSpan}";
+            return $"{this.GetType()}";
         }
     }
 }

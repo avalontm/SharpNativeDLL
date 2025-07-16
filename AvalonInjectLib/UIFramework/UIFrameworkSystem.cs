@@ -1,116 +1,69 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
+﻿using static AvalonInjectLib.Structs;
 namespace AvalonInjectLib.UIFramework
 {
-    internal class UIFrameworkSystem
-    { // Control actualmente enfocado
-        private static UIControl _focusedControl;
+    public static class UIFrameworkSystem
+    {
+        private static UIControl? _focusedControl;
+        private static readonly List<Window> _windows = new();
+        private static readonly HashSet<UIControl> _controls = new();
 
-        // Lista de controles modales (para manejar jerarquías de focus)
-        private static List<UIControl> _modalControls = new List<UIControl>();
+        public static UIControl? FocusedControl => _focusedControl;
+        public static bool HasModal => _windows.Count > 0;
 
-        /// <summary>
-        /// Obtiene o establece el control que actualmente tiene el foco
-        /// </summary>
-        public static UIControl FocusedControl
+
+        public static void SetFocus(UIControl? control)
         {
-            get => _focusedControl;
-            set
+            if (control == _focusedControl) return;
+
+            Vector2 mousePos = UIEventSystem.MousePosition;
+ 
+            // Remover foco del control anterior
+            if (_focusedControl != null)
             {
-                if (_focusedControl != value)
-                {
-                    // Quitar el foco del control actual
-                    _focusedControl?.OnFocusLost?.Invoke();
-
-                    // Establecer nuevo control enfocado
-                    _focusedControl = value;
-
-                    // Notificar al nuevo control
-                    _focusedControl?.OnFocusGained?.Invoke();
-                }
+                _focusedControl.HasFocus = false;
+                _focusedControl.MouseLeave?.Invoke(mousePos);
             }
+
+            // Establecer nuevo foco
+            _focusedControl = control;
+            if (_focusedControl != null)
+            {
+                _focusedControl.HasFocus = true;
+                _focusedControl.MouseEnter?.Invoke(mousePos);
+            }
+
         }
 
-        /// <summary>
-        /// Indica si hay algún control modal activo
-        /// </summary>
-        public static bool HasModal => _modalControls.Count > 0;
-
-        /// <summary>
-        /// Obtiene el control modal superior (si existe)
-        /// </summary>
-        public static UIControl TopModal => HasModal ? _modalControls.Last() : null;
-
-        /// <summary>
-        /// Establece el foco en un control específico
-        /// </summary>
-        public static void SetFocus(UIControl control)
+        public static void ClearFocusControls()
         {
-            // Si hay controles modales, solo permitir enfocar controles dentro del modal superior
-            if (HasModal && !IsInModalHierarchy(control))
-                return;
-
-            FocusedControl = control;
+            _controls.Clear();
         }
 
-        /// <summary>
-        /// Quita el foco del control actual
-        /// </summary>
         public static void ClearFocus()
         {
-            FocusedControl = null;
+            SetFocus(null);
         }
 
-        /// <summary>
-        /// Agrega un control modal a la jerarquía
-        /// </summary>
-        public static void AddModal(UIControl modal)
+        public static bool IsFocusable(UIControl control)
         {
-            if (!_modalControls.Contains(modal))
-            {
-                _modalControls.Add(modal);
+            return control.IsFocusable;
+        }
 
-                // Si el control enfocado actual no está en la jerarquía modal, quitamos el foco
-                if (FocusedControl != null && !IsInModalHierarchy(FocusedControl))
+        public static void SetControl(UIControl control)
+        {
+            if (control == null) return;
+            _controls.Add(control);
+        }
+
+        public static bool IsValidClick()
+        {
+            foreach(var control in _controls.Reverse())
+            {
+                if(control.IsFocusable)
                 {
-                    ClearFocus();
+                    SetFocus(control);
+                    return true;
                 }
-            }
-        }
-
-        /// <summary>
-        /// Remueve un control modal de la jerarquía
-        /// </summary>
-        public static void RemoveModal(UIControl modal)
-        {
-            _modalControls.Remove(modal);
-        }
-
-        /// <summary>
-        /// Verifica si un control está dentro de la jerarquía modal actual
-        /// </summary>
-        private static bool IsInModalHierarchy(UIControl control)
-        {
-            if (control == null) return false;
-            if (!HasModal) return true;
-
-            // Buscar hacia arriba en la jerarquía de padres
-            UIControl current = control;
-            while (current != null)
-            {
-                if (_modalControls.Contains(current))
-                    return true;
-
-                // Si el control está dentro de una ventana modal
-                if (current is Window window && window.IsModal)
-                    return true;
-
-                // Para controles dentro de otros controles
-                current = current.Parent;
             }
 
             return false;

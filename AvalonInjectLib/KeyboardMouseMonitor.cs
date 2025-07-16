@@ -20,12 +20,68 @@ namespace AvalonInjectLib
         [DllImport("user32.dll")]
         private static extern bool GetCursorPos(out POINT lpPoint);
 
+        // Hook imports para detectar mouse wheel
+        [DllImport("user32.dll", CharSet = CharSet.Auto, CallingConvention = CallingConvention.StdCall)]
+        private static extern int SetWindowsHookEx(int idHook, HookProc lpfn, IntPtr hInstance, int threadId);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, CallingConvention = CallingConvention.StdCall)]
+        private static extern bool UnhookWindowsHookEx(int idHook);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, CallingConvention = CallingConvention.StdCall)]
+        private static extern int CallNextHookEx(int idHook, int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, CallingConvention = CallingConvention.StdCall)]
+        private static extern IntPtr GetModuleHandle(string lpModuleName);
+
+        // Message loop imports
+        [DllImport("user32.dll")]
+        private static extern int GetMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+        [DllImport("user32.dll")]
+        private static extern bool TranslateMessage([In] ref MSG lpMsg);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr DispatchMessage([In] ref MSG lpmsg);
+
+        [DllImport("user32.dll")]
+        private static extern bool PostThreadMessage(uint idThread, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MSG
+        {
+            public IntPtr hwnd;
+            public uint message;
+            public IntPtr wParam;
+            public IntPtr lParam;
+            public uint time;
+            public POINT pt;
+        }
+
         [StructLayout(LayoutKind.Sequential)]
         private struct POINT
         {
             public int X;
             public int Y;
         }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MSLLHOOKSTRUCT
+        {
+            public POINT pt;
+            public uint mouseData;
+            public uint flags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
+        // Hook constants
+        private const int WH_MOUSE_LL = 14;
+        private const int WM_MOUSEWHEEL = 0x020A;
+        private const int WM_MOUSEHWHEEL = 0x020E; // Horizontal wheel
+        private const uint WM_QUIT = 0x0012;
+
+        // Hook delegate
+        private delegate int HookProc(int nCode, IntPtr wParam, IntPtr lParam);
 
         // Mouse button virtual key codes
         private const int VK_LBUTTON = 0x01;
@@ -35,9 +91,15 @@ namespace AvalonInjectLib
         private const int VK_XBUTTON2 = 0x06;
 
         private static Thread _monitorThread;
+        private static Thread _hookThread;
         private static bool _isMonitoring = false;
         private static uint _targetProcessId;
         private static Action<InputEventArgs> _inputEventCallback;
+
+        // Hook variables
+        private static HookProc _hookProc;
+        private static int _mouseHookId = 0;
+        private static readonly object _hookLock = new object();
 
         // Estados mejorados con temporización
         private struct mKeyState
@@ -61,24 +123,75 @@ namespace AvalonInjectLib
             public int MouseX { get; set; }
             public int MouseY { get; set; }
             public string ButtonName { get; set; }
+            public int WheelDelta { get; set; }
+            public bool IsHorizontalWheel { get; set; }
         }
 
         public enum InputType
         {
             Keyboard,
             MouseButton,
-            MouseMove
+            MouseMove,
+            MouseWheel
         }
 
-        internal static void StartMonitoring(uint targetProcessId, Action<InputEventArgs> onInputEvent)
+        internal static void StartMonitoring(uint targetProcessId, Action<InputEventArgs> onInputEvent, Action<string> onLog = null)
         {
             if (_isMonitoring) return;
 
             _targetProcessId = targetProcessId;
             _inputEventCallback = onInputEvent;
+
             _isMonitoring = true;
 
+            Logger.Debug("Starting monitoring...", "Monitor");
+
             GetCursorPos(out _lastMousePosition);
+
+            // Instalar hook en un hilo separado para evitar congelamiento
+            _hookThread = new Thread(() =>
+            {
+                try
+                {
+                    Logger.Debug("Installing mouse hook...", "Monitor");
+                    lock (_hookLock)
+                    {
+                        _hookProc = MouseHookProc;
+                        _mouseHookId = SetWindowsHookEx(WH_MOUSE_LL, _hookProc, GetModuleHandle(null), 0);
+
+                        if (_mouseHookId == 0)
+                        {
+                            int error = Marshal.GetLastWin32Error();
+                            Logger.Error($"Failed to install mouse hook. Error: {error}", "Monitor");
+                        }
+                        else
+                        {
+                              Logger.Debug($"Mouse hook installed successfully. Hook ID: {_mouseHookId}", "Monitor");
+                        }
+                    }
+
+                    // Message loop para el hook
+                    MSG msg;
+                    while (_isMonitoring && GetMessage(out msg, IntPtr.Zero, 0, 0) != 0)
+                    {
+                        TranslateMessage(ref msg);
+                        DispatchMessage(ref msg);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error($"Hook thread error: {ex.Message}", "Monitor");
+                }
+            })
+            {
+                Name = "MouseHookThread",
+                IsBackground = true
+            };
+            _hookThread.SetApartmentState(ApartmentState.STA);
+            _hookThread.Start();
+
+            // Esperar un poco para que el hook se instale
+            Thread.Sleep(100);
 
             _monitorThread = new Thread(MonitorLoop)
             {
@@ -87,12 +200,82 @@ namespace AvalonInjectLib
                 IsBackground = true
             };
             _monitorThread.Start();
+
+            Logger.Debug("Monitoring started successfully", "Monitor");
         }
 
         internal static void StopMonitoring()
         {
+            if (!_isMonitoring) return;
+
+            Logger.Debug("Stopping monitoring...", "Monitor");
             _isMonitoring = false;
+
+            // Desinstalar hook de forma segura
+            lock (_hookLock)
+            {
+                if (_mouseHookId != 0)
+                {
+                    Logger.Debug("Uninstalling mouse hook...", "Monitor");
+                    bool success = UnhookWindowsHookEx(_mouseHookId);
+                    Logger.Debug($"Hook uninstalled: {success}", "Monitor");
+                    _mouseHookId = 0;
+                }
+            }
+
+            // Terminar el hilo del hook
+            if (_hookThread != null && _hookThread.IsAlive)
+            {
+                PostThreadMessage((uint)_hookThread.ManagedThreadId, WM_QUIT, IntPtr.Zero, IntPtr.Zero);
+                _hookThread.Join(500);
+            }
+
             _monitorThread?.Join(100);
+            Logger.Debug("Monitoring stopped", "Monitor");
+        }
+
+        private static int MouseHookProc(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            try
+            {
+                if (nCode >= 0 && _isMonitoring)
+                {
+                    int message = wParam.ToInt32();
+
+                    if (message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL)
+                    {
+   
+                        // Verificar si la ventana activa pertenece al proceso objetivo
+                        IntPtr hWnd = GetForegroundWindow();
+                        GetWindowThreadProcessId(hWnd, out uint pid);
+
+                        if (pid == _targetProcessId)
+                        {
+                            MSLLHOOKSTRUCT hookStruct = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
+
+                            // Extraer el delta de la rueda del mouse
+                            int wheelDelta = (short)((hookStruct.mouseData >> 16) & 0xFFFF);
+
+                            var inputEvent = new InputEventArgs
+                            {
+                                Type = InputType.MouseWheel,
+                                MouseX = hookStruct.pt.X,
+                                MouseY = hookStruct.pt.Y,
+                                WheelDelta = wheelDelta,
+                                IsHorizontalWheel = message == WM_MOUSEHWHEEL
+                            };
+
+                            _inputEventCallback?.Invoke(inputEvent);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"MouseHookProc error: {ex.Message}", "Monitor");
+            }
+
+            return CallNextHookEx(_mouseHookId, nCode, wParam, lParam);
         }
 
         private static void MonitorLoop()
@@ -114,7 +297,7 @@ namespace AvalonInjectLib
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"KeyboardMouseMonitor error: {ex.Message}");
+                    Logger.Error($"KeyboardMouseMonitor error: {ex.Message}", "Monitor");
                     Thread.Sleep(100);
                 }
             }

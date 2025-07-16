@@ -119,6 +119,10 @@ namespace AvalonInjectLib
                     HandleMouseButtonEvent(e);
                     break;
 
+                case KeyboardMouseMonitor.InputType.MouseWheel:
+                    HandleMouseWheelEvent(e);
+                    break;
+
                 case KeyboardMouseMonitor.InputType.MouseMove:
                     HandleMouseMoveEvent(e);
                     break;
@@ -153,6 +157,11 @@ namespace AvalonInjectLib
             }
 
             _keyStates[e.KeyCode] = state;
+        }
+
+        private static void HandleMouseWheelEvent(KeyboardMouseMonitor.InputEventArgs e)
+        {
+            UIEventSystem.UpdateWell(e.IsHorizontalWheel, e.WheelDelta);
         }
 
         private static void HandleMouseButtonEvent(KeyboardMouseMonitor.InputEventArgs e)
@@ -303,14 +312,14 @@ namespace AvalonInjectLib
         /// <summary>
         /// Obtiene la posición actual del mouse
         /// </summary>
-        public static (int X, int Y) GetMousePosition()
+        public static Vector2 GetMousePosition()
             => new (_mouseState.X, _mouseState.Y);
 
         /// <summary>
         /// Obtiene el delta de movimiento del mouse desde el último frame
         /// </summary>
-        public static (int DeltaX, int DeltaY) GetMouseDelta()
-            => (_mouseState.X - _mouseState.PreviousX, _mouseState.Y - _mouseState.PreviousY);
+        public static Vector2 GetMouseDelta()
+            => new (_mouseState.X - _mouseState.PreviousX, _mouseState.Y - _mouseState.PreviousY);
 
         /// <summary>
         /// Verifica si el mouse se ha movido en este frame

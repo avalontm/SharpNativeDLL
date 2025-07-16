@@ -11,6 +11,7 @@ namespace AvalonInjectLib
         // Constantes OpenGL
         private const int GL_LINES = 0x0001;
         private const int GL_TRIANGLES = 0x0004;
+        private const int GL_TRIANGLE_FAN = 0x0006;
         private const int GL_QUADS = 0x0007;
         private const int GL_LINE_LOOP = 0x0002;
         private const int GL_MODELVIEW = 0x1700;
@@ -314,8 +315,6 @@ namespace AvalonInjectLib
             }
         }
 
-        // Fragmento de OpenGLHook.cs con las correcciones necesarias
-
         [UnmanagedCallersOnly]
         private static bool HookedWglSwapBuffers(IntPtr hdc)
         {
@@ -323,11 +322,11 @@ namespace AvalonInjectLib
             {
                 if (hdc != IntPtr.Zero)
                 {
-                    // 1. Guardar contexto original
+                    //Guardar contexto original
                     IntPtr originalContext = OpenGLInterop.wglGetCurrentContext();
                     IntPtr originalHdc = OpenGLInterop.wglGetCurrentDC();
 
-                    // 2. Crear contexto temporal si no existe uno actual
+                    //Crear contexto temporal si no existe uno actual
                     if (originalContext == IntPtr.Zero)
                     {
                         originalContext = OpenGLInterop.wglCreateContext(hdc);
@@ -340,22 +339,28 @@ namespace AvalonInjectLib
 
                     try
                     {
-                        // 3. Configurar renderizado
+                        //Configurar renderizado
                         SetupRendering();
 
-                        // 4. Inicializar font si es necesario
-                        if (!FontRenderer.IsInitialized)
-                        {
-                            FontRenderer.Initialize(originalContext);
-                        }
-
-                        // 5. Ejecutar renderizado
+                        TextureRenderer.IsContexted = true;
+                        FontRenderer.IsContexted = true;
+                       
+                        ProcessAllPendingFonts();
+                        ProcessAllPendingTextures();
+                       
                         ExecuteRenderCallbacks();
                     }
                     finally
                     {
-                        // 6. Restaurar estado
+                        if (TextureRenderer.HasPendingTextures())
+                        {
+                            ProcessAllPendingTextures();
+                        }
+
                         RestoreRendering();
+
+                        TextureRenderer.IsContexted = false;
+                        FontRenderer.IsContexted = false;
 
                         // Solo hacer MakeCurrent si teníamos un contexto original
                         if (originalHdc != IntPtr.Zero)
@@ -370,6 +375,61 @@ namespace AvalonInjectLib
                 Debug.WriteLine($"Render error: {ex}");
             }
             return CallOriginalWglSwapBuffers(hdc);
+        }
+
+        // Método helper para procesar todas las texturas pendientes
+        private static void ProcessAllPendingTextures()
+        {
+            int maxIterations = 100; // Prevenir bucle infinito
+            int iterations = 0;
+
+            while (TextureRenderer.HasPendingTextures() && iterations < maxIterations)
+            {
+                TextureRenderer.ProcessPendingTextures();
+                iterations++;
+
+                // Pequeña pausa para evitar usar demasiado CPU
+                if (TextureRenderer.HasPendingTextures())
+                {
+                    WinInterop.Sleep(1);
+                }
+            }
+
+            if (iterations >= maxIterations)
+            {
+                Logger.Warning("Se alcanzó el límite máximo de iteraciones procesando texturas pendientes", "OpenGLHook");
+            }
+            else if (iterations > 0)
+            {
+                Logger.Debug($"Procesadas texturas pendientes en {iterations} iteraciones", "OpenGLHook");
+            }
+        }
+
+        private static void ProcessAllPendingFonts()
+        {
+            int maxIterations = 100; // Prevenir bucle infinito
+            int iterations = 0;
+
+            while (FontRenderer.HasPendingFonts() && iterations < maxIterations)
+            {
+                FontRenderer.ProcessPendingFonts();
+                iterations++;
+
+                // Pequeña pausa para evitar usar demasiado CPU
+                if (FontRenderer.HasPendingFonts())
+                {
+                    WinInterop.Sleep(1);
+                }
+            }
+
+            if (iterations >= maxIterations)
+            {
+                Logger.Warning("Se alcanzó el límite máximo de iteraciones procesando fonts pendientes", "OpenGLHook");
+            }
+            else if (iterations > 0)
+            {
+                Logger.Debug($"Procesadas fonts pendientes en {iterations} iteraciones", "OpenGLHook");
+            }
         }
 
         private static void SetupRendering()
@@ -538,26 +598,27 @@ namespace AvalonInjectLib
         /// Dibuja un círculo relleno
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static void DrawFilledCircle(Vector2 center, float radius, Color color, int segments = 64)
+        internal static void DrawFilledCircle(Vector2 center, float radius, Color color)
         {
-            if (!_initialized) return;
+            if (!_initialized || radius <= 0) return;
 
-            OpenGLInterop.glBegin(GL_TRIANGLES);
+            // Cálculo dinámico del número de segmentos basado en el radio
+            int segments = CalculateOptimalSegments(radius);
+
+            OpenGLInterop.glBegin(GL_TRIANGLE_FAN);
             OpenGLInterop.glColor4f(color.R, color.G, color.B, color.A);
 
-            for (int i = 0; i < segments; i++)
-            {
-                float angle1 = (float)i / segments * 6.28318530718f; // 2π radianes
-                float angle2 = (float)(i + 1) / segments * 6.28318530718f;
+            // Primer vértice en el centro
+            OpenGLInterop.glVertex2f(center.X, center.Y);
 
-                OpenGLInterop.glVertex2f(center.X, center.Y); // Centro
+            // Vértices del perímetro - CORREGIDO: va de 0 a segments (inclusive)
+            // para cerrar correctamente el círculo
+            for (int i = 0; i <= segments; i++)
+            {
+                float angle = (float)i / segments * 6.28318530718f; // 2π radianes
                 OpenGLInterop.glVertex2f(
-                    center.X + FastCos(angle1) * radius,
-                    center.Y + FastSin(angle1) * radius
-                );
-                OpenGLInterop.glVertex2f(
-                    center.X + FastCos(angle2) * radius,
-                    center.Y + FastSin(angle2) * radius
+                    center.X + FastCos(angle) * radius,
+                    center.Y + FastSin(angle) * radius
                 );
             }
 
@@ -565,12 +626,59 @@ namespace AvalonInjectLib
         }
 
         /// <summary>
+        /// Dibuja un triángulo relleno
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static void DrawTriangle(Vector2 vector21, Vector2 vector22, Vector2 vector23, UIFramework.Color arrowColor)
+        {
+            if (!_initialized) return;
+
+            OpenGLInterop.glBegin(GL_TRIANGLES);
+            OpenGLInterop.glColor4f(arrowColor.R, arrowColor.G, arrowColor.B, arrowColor.A);
+
+            // Primer vértice
+            OpenGLInterop.glVertex2f(vector21.X, vector21.Y);
+            // Segundo vértice
+            OpenGLInterop.glVertex2f(vector22.X, vector22.Y);
+            // Tercer vértice
+            OpenGLInterop.glVertex2f(vector23.X, vector23.Y);
+
+            OpenGLInterop.glEnd();
+        }
+
+        private static int CalculateOptimalSegments(float radius)
+        {
+            // Fórmula mejorada: más segmentos para círculos más grandes
+            // pero con una progresión más suave
+            const int minSegments = 12;   // Mínimo para que se vea circular
+            const int maxSegments = 64;   // Máximo para performance
+
+            // Cálculo basado en el perímetro aproximado
+            // Más radio = más perímetro = más segmentos necesarios
+            int segments = (int)(radius * 0.5f + 16f);
+
+            // Aplicar límites
+            return Math.Clamp(segments, minSegments, maxSegments);
+        }
+
+        // Alternativa más simple y efectiva:
+        private static int CalculateOptimalSegmentsSimple(float radius)
+        {
+            // Fórmula simple pero efectiva
+            if (radius < 10f) return 12;
+            if (radius < 20f) return 16;
+            if (radius < 40f) return 24;
+            if (radius < 80f) return 32;
+            return 48;
+        }
+
+        /// <summary>
         /// Dibuja texto básico (requiere implementación de font atlas)
         /// </summary>
-        internal static void DrawText(string text, Vector2 position, Color color, float scale = 1f)
+        internal static void DrawText(uint fontId, string text, Vector2 position, Color color, float scale = 1f)
         {
             if (!_initialized || string.IsNullOrEmpty(text)) return;
-            FontRenderer.DrawText(text, position.X, position.Y, scale, color);
+            FontRenderer.DrawText(fontId, text, position.X, position.Y, scale, color);
         }
 
         // ================= MATH FUNCTIONS =================
