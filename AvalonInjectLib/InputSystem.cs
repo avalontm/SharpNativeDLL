@@ -157,6 +157,25 @@ namespace AvalonInjectLib
             }
 
             _keyStates[e.KeyCode] = state;
+
+            // Solo asignar teclas válidas (caracteres + Backspace/Delete)
+            if (state.CurrentState)
+            {
+                // Convertir KeyCode a char solo si es imprimible
+                char keyChar = (char)e.KeyCode;
+
+                // Casos especiales: Backspace (8) y Delete (46) en ASCII
+                if (e.KeyCode == 8 || e.KeyCode == 46) // Backspace o Delete
+                {
+                    UIEventSystem.LastKeyPressed = keyChar; // Borrar
+                }
+                // Excluir teclas no imprimibles (flechas, F1-F12, etc.)
+                else if (IsValidTypingChar(keyChar) && !IsSpecialKey(e.KeyCode))
+                {
+                    UIEventSystem.LastKeyPressed = keyChar; // Caracter normal
+                }
+                // Las flechas y otras teclas especiales se ignoran
+            }
         }
 
         private static void HandleMouseWheelEvent(KeyboardMouseMonitor.InputEventArgs e)
@@ -226,6 +245,25 @@ namespace AvalonInjectLib
                 return KeyState.Released;
 
             return KeyState.Up;
+        }
+
+        private static bool IsValidTypingChar(char c)
+        {
+            // Solo acepta letras y números (incluye caracteres Unicode como 'ñ', 'á', etc.)
+            return char.IsLetterOrDigit(c);
+        }
+
+        private static bool IsSpecialKey(int keyCode)
+        {
+            // Teclas a excluir: flechas, F1-F12, Ctrl, Alt, etc.
+            int[] specialKeys = new int[]
+            {
+        37, 38, 39, 40, // Flechas (←, ↑, →, ↓)
+        112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, // F1-F12
+        16, 17, 18,  // Shift, Ctrl, Alt
+        9, 13, 27    // Tab, Enter, Esc
+            };
+            return specialKeys.Contains(keyCode);
         }
 
         /// <summary>

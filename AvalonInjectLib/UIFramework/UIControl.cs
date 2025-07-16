@@ -99,11 +99,9 @@ namespace AvalonInjectLib.UIFramework
                     Click?.Invoke(mousePos);
                 }
 
-
-                WinInterop.Sleep(10);
                 UIFrameworkSystem.ClearFocusControls();
             }
-            
+
             // Manejar teclado si tiene el foco
             if (HasFocus && UIEventSystem.LastKeyPressed.HasValue)
             {

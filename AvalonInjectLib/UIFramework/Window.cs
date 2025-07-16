@@ -106,8 +106,8 @@ namespace AvalonInjectLib
             // Inicializar botón de cierre
             _closeButton = new Button
             {
-                Text = "×",
-                Font = Font.GetDefaultFont().WithSize(14),
+                Text = "x",
+                Font = Font.GetDefaultFont(),
                 Width = CLOSE_BUTTON_SIZE,
                 Height = CLOSE_BUTTON_SIZE,
                 BackColor = Color.Red,
