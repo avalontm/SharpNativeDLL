@@ -3,7 +3,7 @@ using System.Reflection;
 
 namespace AvalonInjectLib
 {
-    internal static unsafe class EmbeddedResourceLoader
+    public static unsafe class EmbeddedResourceLoader
     {
         [UnconditionalSuppressMessage("AssemblyLoadTrimming", "IL2026")]
         public static byte[] LoadResource(string resourceName)

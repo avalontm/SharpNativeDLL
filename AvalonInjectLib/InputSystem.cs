@@ -176,6 +176,7 @@ namespace AvalonInjectLib
                 }
                 // Las flechas y otras teclas especiales se ignoran
             }
+
         }
 
         private static void HandleMouseWheelEvent(KeyboardMouseMonitor.InputEventArgs e)
@@ -327,6 +328,31 @@ namespace AvalonInjectLib
                 return KeyState.Released;
 
             return KeyState.Up;
+        }
+
+
+        /// <summary>
+        /// Verifica si la tecla está actualmente presionada (sin importar si es el primer frame o no)
+        /// </summary>
+        public static bool IsKeyPressed(Keys key)
+        {
+            int keyCode = (int)key;
+            if (!_keyStates.TryGetValue(keyCode, out var state))
+                return false;
+
+            return state.CurrentState;
+        }
+
+        /// <summary>
+        /// Verifica si el botón del mouse está actualmente presionado (sin importar si es el primer frame o no)
+        /// </summary>
+        public static bool IsMouseButtonPressed(MouseButton button)
+        {
+            int keyCode = (int)button;
+            if (!_keyStates.TryGetValue(keyCode, out var state))
+                return false;
+
+            return state.CurrentState;
         }
 
         /// <summary>

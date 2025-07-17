@@ -1,6 +1,5 @@
-﻿using System;
-using System.Runtime.InteropServices;
-using System.Threading;
+﻿using System.Runtime.InteropServices;
+using System.Collections.Concurrent;
 
 namespace AvalonInjectLib
 {
@@ -46,6 +45,9 @@ namespace AvalonInjectLib
         [DllImport("user32.dll")]
         private static extern bool PostThreadMessage(uint idThread, uint Msg, IntPtr wParam, IntPtr lParam);
 
+        [DllImport("kernel32.dll")]
+        private static extern void Sleep(uint dwMilliseconds);
+
         [StructLayout(LayoutKind.Sequential)]
         private struct MSG
         {
@@ -77,7 +79,7 @@ namespace AvalonInjectLib
         // Hook constants
         private const int WH_MOUSE_LL = 14;
         private const int WM_MOUSEWHEEL = 0x020A;
-        private const int WM_MOUSEHWHEEL = 0x020E; // Horizontal wheel
+        private const int WM_MOUSEHWHEEL = 0x020E;
         private const uint WM_QUIT = 0x0012;
 
         // Hook delegate
@@ -92,7 +94,7 @@ namespace AvalonInjectLib
 
         private static Thread _monitorThread;
         private static Thread _hookThread;
-        private static bool _isMonitoring = false;
+        private static volatile bool _isMonitoring = false;
         private static uint _targetProcessId;
         private static Action<InputEventArgs> _inputEventCallback;
 
@@ -101,18 +103,40 @@ namespace AvalonInjectLib
         private static int _mouseHookId = 0;
         private static readonly object _hookLock = new object();
 
-        // Estados mejorados con temporización
-        private struct mKeyState
+        // Estados con temporización optimizada
+        private struct KeyState
         {
             internal bool CurrentState;
             internal bool PreviousState;
             internal long LastChangeTime;
         }
 
-        private static mKeyState[] _keyStates = new mKeyState[256];
+        private static KeyState[] _keyStates = new KeyState[256];
         private static POINT _lastMousePosition;
+
+        // Constantes optimizadas para evitar congelamiento
         private const int DEBOUNCE_TIME_MS = 20;
         private const int MOUSE_MOVE_THRESHOLD = 2;
+        private const int MONITOR_SLEEP_MS = 10;
+        private const int ERROR_SLEEP_MS = 100;
+        private const int HOOK_SLEEP_MS = 1;
+
+        // Cache mejorado para ventana activa
+        private static IntPtr _lastForegroundWindow = IntPtr.Zero;
+        private static uint _lastForegroundProcessId = 0;
+        private static long _lastWindowCheckTime = 0;
+        private const int WINDOW_CHECK_INTERVAL_MS = 100; // Aumentado para reducir carga
+
+        // Cola de eventos con procesamiento asíncrono mejorado
+        private static readonly ConcurrentQueue<InputEventArgs> _eventQueue = new ConcurrentQueue<InputEventArgs>();
+        private static Thread _eventProcessorThread;
+        private static readonly AutoResetEvent _eventSignal = new AutoResetEvent(false);
+
+        // Limitadores de frecuencia
+        private static long _lastKeyboardScan = 0;
+        private static long _lastMouseScan = 0;
+        private const int KEYBOARD_SCAN_INTERVAL_MS = 8;
+        private const int MOUSE_SCAN_INTERVAL_MS = 5;
 
         public class InputEventArgs
         {
@@ -141,67 +165,44 @@ namespace AvalonInjectLib
 
             _targetProcessId = targetProcessId;
             _inputEventCallback = onInputEvent;
-
             _isMonitoring = true;
 
             Logger.Debug("Starting monitoring...", "Monitor");
 
-            GetCursorPos(out _lastMousePosition);
+            // Inicializar estado
+            ResetState();
 
-            // Instalar hook en un hilo separado para evitar congelamiento
-            _hookThread = new Thread(() =>
+            // Procesador de eventos con menor prioridad
+            _eventProcessorThread = new Thread(ProcessEventQueue)
             {
-                try
-                {
-                    Logger.Debug("Installing mouse hook...", "Monitor");
-                    lock (_hookLock)
-                    {
-                        _hookProc = MouseHookProc;
-                        _mouseHookId = SetWindowsHookEx(WH_MOUSE_LL, _hookProc, GetModuleHandle(null), 0);
+                Name = "EventProcessorThread",
+                IsBackground = true,
+                Priority = ThreadPriority.BelowNormal // Reducida para evitar interferencia
+            };
+            _eventProcessorThread.Start();
 
-                        if (_mouseHookId == 0)
-                        {
-                            int error = Marshal.GetLastWin32Error();
-                            Logger.Error($"Failed to install mouse hook. Error: {error}", "Monitor");
-                        }
-                        else
-                        {
-                              Logger.Debug($"Mouse hook installed successfully. Hook ID: {_mouseHookId}", "Monitor");
-                        }
-                    }
-
-                    // Message loop para el hook
-                    MSG msg;
-                    while (_isMonitoring && GetMessage(out msg, IntPtr.Zero, 0, 0) != 0)
-                    {
-                        TranslateMessage(ref msg);
-                        DispatchMessage(ref msg);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error($"Hook thread error: {ex.Message}", "Monitor");
-                }
-            })
+            // Hook con prioridad normal (NO Highest)
+            _hookThread = new Thread(HookThreadProc)
             {
                 Name = "MouseHookThread",
-                IsBackground = true
+                IsBackground = true,
+                Priority = ThreadPriority.Normal // Cambiado de Highest a Normal
             };
             _hookThread.SetApartmentState(ApartmentState.STA);
             _hookThread.Start();
 
-            // Esperar un poco para que el hook se instale
-            Thread.Sleep(100);
+            Thread.Sleep(100); // Dar tiempo al hook para inicializarse
 
+            // Monitor principal con prioridad baja
             _monitorThread = new Thread(MonitorLoop)
             {
                 Name = "KeyboardMouseMonitorThread",
-                Priority = ThreadPriority.AboveNormal,
+                Priority = ThreadPriority.BelowNormal, // Reducida para evitar bloqueo
                 IsBackground = true
             };
             _monitorThread.Start();
 
-            Logger.Debug("Monitoring started successfully", "Monitor");
+            Logger.Debug("monitoring started successfully", "Monitor");
         }
 
         internal static void StopMonitoring()
@@ -210,6 +211,9 @@ namespace AvalonInjectLib
 
             Logger.Debug("Stopping monitoring...", "Monitor");
             _isMonitoring = false;
+
+            // Señalar al procesador de eventos
+            _eventSignal.Set();
 
             // Desinstalar hook de forma segura
             lock (_hookLock)
@@ -223,37 +227,185 @@ namespace AvalonInjectLib
                 }
             }
 
-            // Terminar el hilo del hook
-            if (_hookThread != null && _hookThread.IsAlive)
+            // Terminar hilos con timeout más generoso
+            TerminateThread(_hookThread, "Hook", 2000);
+            TerminateThread(_monitorThread, "Monitor", 1000);
+            TerminateThread(_eventProcessorThread, "EventProcessor", 1000);
+
+            Logger.Debug("Monitoring stopped", "Monitor");
+        }
+
+        private static void ResetState()
+        {
+            _lastForegroundWindow = IntPtr.Zero;
+            _lastForegroundProcessId = 0;
+            _lastWindowCheckTime = 0;
+            _lastKeyboardScan = 0;
+            _lastMouseScan = 0;
+
+            GetCursorPos(out _lastMousePosition);
+
+            // Limpiar cola de eventos
+            while (_eventQueue.TryDequeue(out _)) { }
+
+            // Inicializar estados de teclas
+            for (int i = 0; i < _keyStates.Length; i++)
             {
-                PostThreadMessage((uint)_hookThread.ManagedThreadId, WM_QUIT, IntPtr.Zero, IntPtr.Zero);
-                _hookThread.Join(500);
+                _keyStates[i] = new KeyState();
+            }
+        }
+
+        private static void TerminateThread(Thread thread, string name, int timeoutMs)
+        {
+            if (thread != null && thread.IsAlive)
+            {
+                if (thread.Name == "MouseHookThread")
+                {
+                    PostThreadMessage((uint)thread.ManagedThreadId, WM_QUIT, IntPtr.Zero, IntPtr.Zero);
+                }
+
+                if (!thread.Join(timeoutMs))
+                {
+                    Logger.Debug($"{name} thread did not terminate gracefully", "Monitor");
+                }
+            }
+        }
+
+        private static void HookThreadProc()
+        {
+            try
+            {
+                Logger.Debug("Installing mouse hook...", "Monitor");
+                lock (_hookLock)
+                {
+                    _hookProc = MouseHookProc;
+                    _mouseHookId = SetWindowsHookEx(WH_MOUSE_LL, _hookProc, GetModuleHandle(null), 0);
+
+                    if (_mouseHookId == 0)
+                    {
+                        int error = Marshal.GetLastWin32Error();
+                        Logger.Error($"Failed to install mouse hook. Error: {error}", "Monitor");
+                        return;
+                    }
+                    else
+                    {
+                        Logger.Debug($"Mouse hook installed successfully. Hook ID: {_mouseHookId}", "Monitor");
+                    }
+                }
+
+                // Message loop optimizado con yield
+                MSG msg;
+                while (_isMonitoring)
+                {
+                    int result = GetMessage(out msg, IntPtr.Zero, 0, 0);
+                    if (result == 0 || result == -1) break;
+
+                    TranslateMessage(ref msg);
+                    DispatchMessage(ref msg);
+
+                    // Pequeño yield para evitar monopolizar CPU
+                    if (msg.message == WM_MOUSEWHEEL || msg.message == WM_MOUSEHWHEEL)
+                    {
+                        Sleep(HOOK_SLEEP_MS);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Hook thread error: {ex.Message}", "Monitor");
+            }
+        }
+
+        private static void ProcessEventQueue()
+        {
+            while (_isMonitoring)
+            {
+                try
+                {
+                    bool hasEvents = false;
+
+                    // Procesar múltiples eventos en lote
+                    for (int i = 0; i < 10 && _eventQueue.TryDequeue(out InputEventArgs eventArgs); i++)
+                    {
+                        _inputEventCallback?.Invoke(eventArgs);
+                        hasEvents = true;
+                    }
+
+                    if (!hasEvents)
+                    {
+                        // Esperar señal o timeout
+                        _eventSignal.WaitOne(50);
+                    }
+                    else
+                    {
+                        // Pequeño yield después de procesar eventos
+                        Thread.Sleep(1);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error($"Event processor error: {ex.Message}", "Monitor");
+                    Thread.Sleep(50);
+                }
+            }
+        }
+
+        private static void EnqueueEvent(InputEventArgs eventArgs)
+        {
+            const int MAX_QUEUE_SIZE = 50; // Reducido para evitar acumulación
+
+            if (_eventQueue.Count < MAX_QUEUE_SIZE)
+            {
+                _eventQueue.Enqueue(eventArgs);
+                _eventSignal.Set(); // Señalar al procesador
+            }
+        }
+
+        private static bool IsTargetWindowActive()
+        {
+            long currentTime = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
+
+            // Cache más agresivo para reducir llamadas
+            if (currentTime - _lastWindowCheckTime < WINDOW_CHECK_INTERVAL_MS)
+            {
+                return _lastForegroundProcessId == _targetProcessId;
             }
 
-            _monitorThread?.Join(100);
-            Logger.Debug("Monitoring stopped", "Monitor");
+            try
+            {
+                IntPtr hWnd = GetForegroundWindow();
+                if (hWnd != _lastForegroundWindow)
+                {
+                    _lastForegroundWindow = hWnd;
+                    GetWindowThreadProcessId(hWnd, out _lastForegroundProcessId);
+                }
+
+                _lastWindowCheckTime = currentTime;
+                return _lastForegroundProcessId == _targetProcessId;
+            }
+            catch
+            {
+                // En caso de error, asumir que no está activa
+                return false;
+            }
         }
 
         private static int MouseHookProc(int nCode, IntPtr wParam, IntPtr lParam)
         {
             try
             {
+                // Procesar solo si es necesario
                 if (nCode >= 0 && _isMonitoring)
                 {
                     int message = wParam.ToInt32();
 
                     if (message == WM_MOUSEWHEEL || message == WM_MOUSEHWHEEL)
                     {
-   
-                        // Verificar si la ventana activa pertenece al proceso objetivo
-                        IntPtr hWnd = GetForegroundWindow();
-                        GetWindowThreadProcessId(hWnd, out uint pid);
-
-                        if (pid == _targetProcessId)
+                        // Verificación rápida sin bloqueo
+                        if (_lastForegroundProcessId == _targetProcessId ||
+                            (DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond - _lastWindowCheckTime > WINDOW_CHECK_INTERVAL_MS && IsTargetWindowActive()))
                         {
                             MSLLHOOKSTRUCT hookStruct = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
-
-                            // Extraer el delta de la rueda del mouse
                             int wheelDelta = (short)((hookStruct.mouseData >> 16) & 0xFFFF);
 
                             var inputEvent = new InputEventArgs
@@ -265,7 +417,7 @@ namespace AvalonInjectLib
                                 IsHorizontalWheel = message == WM_MOUSEHWHEEL
                             };
 
-                            _inputEventCallback?.Invoke(inputEvent);
+                            EnqueueEvent(inputEvent);
                         }
                     }
                 }
@@ -275,6 +427,7 @@ namespace AvalonInjectLib
                 Logger.Error($"MouseHookProc error: {ex.Message}", "Monitor");
             }
 
+            // CRÍTICO: Siempre llamar al siguiente hook inmediatamente
             return CallNextHookEx(_mouseHookId, nCode, wParam, lParam);
         }
 
@@ -284,21 +437,31 @@ namespace AvalonInjectLib
             {
                 try
                 {
-                    IntPtr hWnd = GetForegroundWindow();
-                    GetWindowThreadProcessId(hWnd, out uint pid);
-
-                    if (pid == _targetProcessId)
+                    if (IsTargetWindowActive())
                     {
-                        ScanKeyboard();
-                        ScanMouse();
+                        long currentTime = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
+
+                        // Limitar frecuencia de escaneo
+                        if (currentTime - _lastKeyboardScan >= KEYBOARD_SCAN_INTERVAL_MS)
+                        {
+                            ScanKeyboard();
+                            _lastKeyboardScan = currentTime;
+                        }
+
+                        if (currentTime - _lastMouseScan >= MOUSE_SCAN_INTERVAL_MS)
+                        {
+                            ScanMouse();
+                            _lastMouseScan = currentTime;
+                        }
                     }
 
-                    Thread.Sleep(10);
+                    // Sleep más generoso para evitar monopolizar CPU
+                    Thread.Sleep(MONITOR_SLEEP_MS);
                 }
                 catch (Exception ex)
                 {
                     Logger.Error($"KeyboardMouseMonitor error: {ex.Message}", "Monitor");
-                    Thread.Sleep(100);
+                    Thread.Sleep(ERROR_SLEEP_MS);
                 }
             }
         }
@@ -307,26 +470,37 @@ namespace AvalonInjectLib
         {
             long currentTime = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
 
-            for (int vkCode = 1; vkCode < 256; vkCode++)
+            // Escanear solo teclas esenciales para reducir carga
+            var essentialKeys = new int[] {
+                0x20, 0x0D, 0x1B, 0x08, 0x09, // Space, Enter, Escape, Backspace, Tab
+                0x10, 0x11, 0x12, // Shift, Ctrl, Alt
+                0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, // A-J
+                0x4B, 0x4C, 0x4D, 0x4E, 0x4F, 0x50, 0x51, 0x52, 0x53, 0x54, // K-T
+                0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, // U-Z
+                0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, // 0-9
+                0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B, // F1-F12
+                0x25, 0x26, 0x27, 0x28, // Arrow keys
+                0x21, 0x22, 0x23, 0x24 // PageUp, PageDown, End, Home
+            };
+
+            foreach (int vkCode in essentialKeys)
             {
-                if (vkCode == VK_LBUTTON || vkCode == VK_RBUTTON || vkCode == VK_MBUTTON ||
-                    vkCode == VK_XBUTTON1 || vkCode == VK_XBUTTON2)
-                    continue;
+                if (!_isMonitoring) break;
 
-                short state = GetAsyncKeyState(vkCode);
-                bool isPressed = (state & 0x8000) != 0;
-
-                if (currentTime - _keyStates[vkCode].LastChangeTime > DEBOUNCE_TIME_MS)
+                try
                 {
-                    if (isPressed != _keyStates[vkCode].CurrentState)
-                    {
-                        _keyStates[vkCode].PreviousState = _keyStates[vkCode].CurrentState;
-                        _keyStates[vkCode].CurrentState = isPressed;
-                        _keyStates[vkCode].LastChangeTime = currentTime;
+                    short state = GetAsyncKeyState(vkCode);
+                    bool isPressed = (state & 0x8000) != 0;
 
-                        if (_keyStates[vkCode].CurrentState != _keyStates[vkCode].PreviousState)
+                    if (currentTime - _keyStates[vkCode].LastChangeTime > DEBOUNCE_TIME_MS)
+                    {
+                        if (isPressed != _keyStates[vkCode].CurrentState)
                         {
-                            _inputEventCallback?.Invoke(new InputEventArgs
+                            _keyStates[vkCode].PreviousState = _keyStates[vkCode].CurrentState;
+                            _keyStates[vkCode].CurrentState = isPressed;
+                            _keyStates[vkCode].LastChangeTime = currentTime;
+
+                            EnqueueEvent(new InputEventArgs
                             {
                                 Type = InputType.Keyboard,
                                 KeyCode = vkCode,
@@ -336,6 +510,11 @@ namespace AvalonInjectLib
                         }
                     }
                 }
+                catch
+                {
+                    // Ignorar errores individuales de teclas
+                    continue;
+                }
             }
         }
 
@@ -343,53 +522,68 @@ namespace AvalonInjectLib
         {
             long currentTime = DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond;
 
-            if (GetCursorPos(out POINT currentPos))
+            try
             {
-                if (Math.Abs(currentPos.X - _lastMousePosition.X) > MOUSE_MOVE_THRESHOLD ||
-                    Math.Abs(currentPos.Y - _lastMousePosition.Y) > MOUSE_MOVE_THRESHOLD)
+                // Movimiento del mouse
+                if (GetCursorPos(out POINT currentPos))
                 {
-                    _inputEventCallback?.Invoke(new InputEventArgs
+                    int deltaX = Math.Abs(currentPos.X - _lastMousePosition.X);
+                    int deltaY = Math.Abs(currentPos.Y - _lastMousePosition.Y);
+
+                    if (deltaX > MOUSE_MOVE_THRESHOLD || deltaY > MOUSE_MOVE_THRESHOLD)
                     {
-                        Type = InputType.MouseMove,
-                        MouseX = currentPos.X,
-                        MouseY = currentPos.Y
-                    });
-
-                    _lastMousePosition = currentPos;
-                }
-            }
-
-            int[] mouseButtons = { VK_LBUTTON, VK_RBUTTON, VK_MBUTTON, VK_XBUTTON1, VK_XBUTTON2 };
-
-            foreach (int button in mouseButtons)
-            {
-                short state = GetAsyncKeyState(button);
-                bool isPressed = (state & 0x8000) != 0;
-
-                if (currentTime - _keyStates[button].LastChangeTime > DEBOUNCE_TIME_MS)
-                {
-                    if (isPressed != _keyStates[button].CurrentState)
-                    {
-                        _keyStates[button].PreviousState = _keyStates[button].CurrentState;
-                        _keyStates[button].CurrentState = isPressed;
-                        _keyStates[button].LastChangeTime = currentTime;
-
-                        if (_keyStates[button].CurrentState != _keyStates[button].PreviousState)
+                        EnqueueEvent(new InputEventArgs
                         {
-                            GetCursorPos(out POINT mousePos);
+                            Type = InputType.MouseMove,
+                            MouseX = currentPos.X,
+                            MouseY = currentPos.Y
+                        });
 
-                            _inputEventCallback?.Invoke(new InputEventArgs
-                            {
-                                Type = InputType.MouseButton,
-                                KeyCode = button,
-                                IsPressed = isPressed,
-                                ButtonName = GetMouseButtonName(button),
-                                MouseX = mousePos.X,
-                                MouseY = mousePos.Y
-                            });
-                        }
+                        _lastMousePosition = currentPos;
                     }
                 }
+
+                // Botones del mouse
+                int[] mouseButtons = { VK_LBUTTON, VK_RBUTTON, VK_MBUTTON };
+
+                foreach (int button in mouseButtons)
+                {
+                    if (!_isMonitoring) break;
+
+                    try
+                    {
+                        short state = GetAsyncKeyState(button);
+                        bool isPressed = (state & 0x8000) != 0;
+
+                        if (currentTime - _keyStates[button].LastChangeTime > DEBOUNCE_TIME_MS)
+                        {
+                            if (isPressed != _keyStates[button].CurrentState)
+                            {
+                                _keyStates[button].PreviousState = _keyStates[button].CurrentState;
+                                _keyStates[button].CurrentState = isPressed;
+                                _keyStates[button].LastChangeTime = currentTime;
+
+                                EnqueueEvent(new InputEventArgs
+                                {
+                                    Type = InputType.MouseButton,
+                                    KeyCode = button,
+                                    IsPressed = isPressed,
+                                    ButtonName = GetMouseButtonName(button),
+                                    MouseX = _lastMousePosition.X,
+                                    MouseY = _lastMousePosition.Y
+                                });
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignorar errores de mouse
             }
         }
 

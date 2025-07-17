@@ -9,12 +9,62 @@ namespace AvalonInjectLib
     {
         public static bool IsContexted { get; internal set; }
         private const int DefaultAtlasSize = 512;
-        public const float DefaultFontSize = 14f;
 
         // Estructuras para manejo asíncrono
         private static readonly ConcurrentQueue<PendingFont> _pendingFonts = new();
         private static readonly ConcurrentDictionary<uint, FontData> _loadedFonts = new();
         private static uint _nextPendingId = 1;
+
+        // Estructuras adicionales para métricas detalladas
+        public struct GlyphMetrics
+        {
+            public float Advance;
+            public float BearingX;
+            public float BearingY;
+            public float Width;
+            public float Height;
+        }
+
+
+        // Estructura extendida para las métricas
+        public struct FontVerticalMetrics
+        {
+            // Métricas básicas
+            public float Ascent { get; set; }
+            public float Descent { get; set; }
+            public float LineGap { get; set; }
+            public float LineHeight { get; set; }
+
+            // Métricas visuales
+            public float VisualHeight { get; set; }
+            public float VisualAscent { get; set; }
+            public float VisualDescent { get; set; }
+            public float CapHeight { get; set; }
+            public float XHeight { get; set; }
+
+            // Centros para diferentes tipos de centrado
+            public float VisualCenter { get; set; }
+            public float GeometricCenter { get; set; }
+            public float CapCenter { get; set; }
+
+            // Offsets precalculados para baseline
+            public float BaselineOffsetForVisualCenter { get; set; }
+            public float BaselineOffsetForCapCenter { get; set; }
+
+            // Método helper para obtener baseline centrado
+            public float GetCenteredBaseline(float elementY, float elementHeight, CenteringMode mode = CenteringMode.Visual)
+            {
+                float elementCenter = elementY + (elementHeight / 2);
+
+                return mode switch
+                {
+                    CenteringMode.Visual => elementCenter - (VisualAscent - VisualDescent) / 2,
+                    CenteringMode.Geometric => elementCenter - (Ascent - Descent) / 2,
+                    CenteringMode.CapHeight => elementCenter + CapHeight / 2,
+                    _ => elementCenter - (VisualAscent - VisualDescent) / 2
+                };
+            }
+        }
 
         private struct PendingFont
         {
@@ -162,7 +212,7 @@ namespace AvalonInjectLib
             int ascent, descent, lineGap;
             StbTrueType.stbtt_GetFontVMetrics(stbFont, &ascent, &descent, &lineGap);
 
-            result.FontScale = StbTrueType.stbtt_ScaleForPixelHeight(stbFont, size);
+            result.FontScale = StbTrueType.stbtt_ScaleForPixelHeight(stbFont, size*4);
             result.Ascent = ascent;
             result.Descent = descent;
             result.LineGap = lineGap;
@@ -297,7 +347,7 @@ namespace AvalonInjectLib
         public static bool IsFontReady(uint pendingId) => _loadedFonts.ContainsKey(pendingId);
         public static FontData GetFontData(uint pendingId) => _loadedFonts.TryGetValue(pendingId, out var data) ? data : default;
 
-        public static void DrawText(uint fontId, string text, float x, float y, float scale, Color color)
+        public static void DrawText(uint fontId, string text, float x, float y, float size, Color color)
         {
             if (!_loadedFonts.TryGetValue(fontId, out var font) || !font.IsLoaded) return;
 
@@ -305,6 +355,8 @@ namespace AvalonInjectLib
             glBindTexture(GL_TEXTURE_2D, font.TextureId);
             glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 
+            // Calcular escala basada en el tamaño solicitado vs el tamaño base de la fuente
+            float scale = size / (font.Ascent * font.FontScale);
             float startX = x;
             float baseline = y + (font.Ascent * font.FontScale * scale);
 
@@ -313,7 +365,7 @@ namespace AvalonInjectLib
                 if (c == '\n')
                 {
                     startX = x;
-                    baseline += DefaultFontSize * scale;
+                    baseline += GetLineHeight(fontId, scale);
                     continue;
                 }
 
@@ -351,30 +403,165 @@ namespace AvalonInjectLib
             glDisable(GL_TEXTURE_2D);
         }
 
-        public static Vector2 MeasureText(uint fontId, string text, float scale)
+        internal static Vector2 MeasureText(uint fontId, string text, float scale)
         {
             if (!_loadedFonts.TryGetValue(fontId, out var font) || !font.IsLoaded)
                 return Vector2.Zero;
 
-            float width = 0;
-            float height = (font.Ascent - font.Descent) * font.FontScale * scale;
+            if (string.IsNullOrEmpty(text))
+                return Vector2.Zero;
+
+            scale = (scale / 4);
+            float maxWidth = 0f;
+            float currentWidth = 0f;
+            int lineCount = 1;
 
             foreach (char c in text)
             {
+                if (c == '\n')
+                {
+                    if (currentWidth > maxWidth)
+                        maxWidth = currentWidth;
+                    currentWidth = 0f;
+                    lineCount++;
+                    continue;
+                }
+
                 if (font.Glyphs.TryGetValue(c, out var glyph))
-                    width += glyph.Advance * scale;
+                {
+                    currentWidth += glyph.Advance * scale;
+                }
             }
 
-            return new Vector2(width, height);
+            // Verificar la última línea
+            if (currentWidth > maxWidth)
+                maxWidth = currentWidth;
+
+            float height = lineCount * GetLineHeight(fontId, scale);
+            return new Vector2(maxWidth, height);
         }
 
-        public static float GetLineHeight(uint fontId, float scale = 1.0f)
+        internal static float GetLineHeight(uint fontId, float scale = 1.0f)
         {
             if (!_loadedFonts.TryGetValue(fontId, out var font) || !font.IsLoaded)
                 return 0f;
 
-            // La altura de línea típicamente incluye ascent, descent y line gap
+            scale = (scale / 4);
+
+            // Altura de línea = (ascent - descent + lineGap) * escala de fuente * escala aplicada
             return (font.Ascent - font.Descent + font.LineGap) * font.FontScale * scale;
+        }
+
+        // Método para obtener métricas detalladas de un carácter específico
+        internal static GlyphMetrics GetCharacterMetrics(uint fontId, char c, float scale = 1.0f)
+        {
+            if (!_loadedFonts.TryGetValue(fontId, out var font) || !font.IsLoaded)
+                return new GlyphMetrics();
+
+            if (!font.Glyphs.TryGetValue(c, out var glyph))
+                return new GlyphMetrics();
+
+            scale = (scale / 4);
+            return new GlyphMetrics
+            {
+                Advance = glyph.Advance * scale,
+                BearingX = glyph.BearingX * scale,
+                BearingY = glyph.BearingY * scale,
+                Width = glyph.Width * scale,
+                Height = glyph.Height * scale
+            };
+        }
+
+        // Método para obtener ancho preciso de un string sin saltos de línea
+        internal static float GetStringWidth(uint fontId, string text, float scale = 1.0f)
+        {
+            if (!_loadedFonts.TryGetValue(fontId, out var font) || !font.IsLoaded)
+                return 0f;
+
+            if (string.IsNullOrEmpty(text))
+                return 0f;
+
+            scale = (scale / 4);
+
+            float width = 0f;
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = text[i];
+                if (font.Glyphs.TryGetValue(c, out var glyph))
+                {
+                    width += glyph.Advance * scale;
+                }
+            }
+
+            return width;
+        }
+
+        // Método para obtener información de baseline y métricas verticales
+        public static FontVerticalMetrics GetVerticalMetrics(uint fontId, float scale = 1.0f)
+        {
+            if (!_loadedFonts.TryGetValue(fontId, out var font) || !font.IsLoaded)
+                return new FontVerticalMetrics();
+
+            float finalScale = font.FontScale * scale;
+            scale = (scale / 4);
+
+            return new FontVerticalMetrics
+            {
+                Ascent = font.Ascent * finalScale,
+                Descent = font.Descent * finalScale,
+                LineGap = font.LineGap * finalScale,
+                LineHeight = (font.Ascent - font.Descent + font.LineGap) * finalScale,
+
+                // Métricas adicionales para centrado visual mejorado
+                VisualHeight = (font.Ascent + font.Descent) * finalScale,
+                VisualAscent = font.Ascent * finalScale * 0.75f,  // Altura visual efectiva
+                VisualDescent = font.Descent * finalScale * 0.75f,
+                CapHeight = font.Ascent * finalScale * 0.7f,      // Altura aproximada de mayúsculas
+                XHeight = font.Ascent * finalScale * 0.5f,        // Altura aproximada de minúsculas
+
+                // Centro visual para centrado perfecto
+                VisualCenter = (font.Ascent - font.Descent) * finalScale * 0.5f * 0.75f
+            };
+        }
+
+        // Versión extendida con más opciones de centrado
+        public static FontVerticalMetrics GetVerticalMetricsExtended(uint fontId, float scale = 1.0f,
+            float visualAdjustment = 0.75f, float capHeightRatio = 0.7f)
+        {
+            if (!_loadedFonts.TryGetValue(fontId, out var font) || !font.IsLoaded)
+                return new FontVerticalMetrics();
+
+            scale = (scale / 4);
+
+            float finalScale = font.FontScale * scale;
+            float ascent = font.Ascent * finalScale;
+            float descent = font.Descent * finalScale;
+            float lineGap = font.LineGap * finalScale;
+
+            return new FontVerticalMetrics
+            {
+                // Métricas básicas
+                Ascent = ascent,
+                Descent = descent,
+                LineGap = lineGap,
+                LineHeight = (font.Ascent - font.Descent + font.LineGap) * finalScale,
+
+                // Métricas visuales ajustadas
+                VisualHeight = ascent + descent,
+                VisualAscent = ascent * visualAdjustment,
+                VisualDescent = descent * visualAdjustment,
+                CapHeight = ascent * capHeightRatio,
+                XHeight = ascent * 0.5f,
+
+                // Centros calculados para diferentes tipos de centrado
+                VisualCenter = (ascent - descent) * visualAdjustment * 0.5f,
+                GeometricCenter = (ascent - descent) * 0.5f,
+                CapCenter = (ascent * capHeightRatio) * 0.5f,
+
+                // Baseline offsets para centrado (corregidos)
+                BaselineOffsetForVisualCenter = -((ascent * visualAdjustment - descent * visualAdjustment) * 0.5f),
+                BaselineOffsetForCapCenter = -(ascent * capHeightRatio * 0.5f)
+            };
         }
 
         public static void DeleteFont(uint pendingId)
@@ -395,11 +582,6 @@ namespace AvalonInjectLib
             }
             _loadedFonts.Clear();
             _pendingFonts.Clear();
-        }
-
-        public static float GetScaleForDesiredSize(float desiredPixelHeight)
-        {
-            return desiredPixelHeight / DefaultFontSize;
         }
 
         public static bool HasPendingFonts()

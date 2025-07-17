@@ -126,9 +126,33 @@ namespace AvalonInjectLib
         {
             _screenSize = UIEventSystem.WindowSize;
 
-            // Asegurarse que la ventana sigue dentro de los límites
-            X = Math.Clamp(X, 0, _screenSize.X - Width);
-            Y = Math.Clamp(Y, 0, _screenSize.Y - Height);
+            // Aplicar límites solo si tiene barra de título
+            if (HasTitleBar)
+            {
+                // Calcular los límites para que solo la barra de título esté visible
+                float titleBarHeight = TITLE_BAR_HEIGHT + (HasBorder ? BORDER_WIDTH : 0);
+
+                // Límites X: la ventana puede salir por los lados, pero debe mostrar algo
+                float maxX = _screenSize.X - 50f; // Al menos 50px visibles del ancho
+                float minX = -(Width - 50f); // Puede salir por la izquierda dejando 50px visibles
+
+                // Límites Y: la barra de título debe estar completamente visible
+                float maxY = _screenSize.Y - titleBarHeight; // La barra no puede salir por abajo
+                float minY = 0f; // No puede salir por arriba
+
+                // Aplicar límites
+                X = Math.Clamp(X, minX, maxX);
+                Y = Math.Clamp(Y, minY, maxY);
+            }
+            else
+            {
+                // Si no hay barra de título, usar comportamiento normal (toda la ventana visible)
+                float maxX = Math.Max(0, _screenSize.X - Width);
+                float maxY = Math.Max(0, _screenSize.Y - Height);
+
+                X = Math.Clamp(X, 0, maxX);
+                Y = Math.Clamp(Y, 0, maxY);
+            }
         }
 
         bool _isPressed;
@@ -215,16 +239,36 @@ namespace AvalonInjectLib
         protected override void OnMouseMove(Vector2 mousePos)
         {
             base.OnMouseMove(mousePos);
-
             if (_isDragging)
             {
                 // Calcular nueva posición
                 float newX = mousePos.X - _dragOffset.X;
                 float newY = mousePos.Y - _dragOffset.Y;
 
-                // Aplicar límites de pantalla
-                newX = Math.Clamp(newX, 0, _screenSize.X - Width);
-                newY = Math.Clamp(newY, 0, _screenSize.Y - Height);
+                // Aplicar límites solo para la barra de título
+                if (HasTitleBar)
+                {
+                    float titleBarHeight = TITLE_BAR_HEIGHT + (HasBorder ? BORDER_WIDTH : 0);
+
+                    // Límites X: permitir que la ventana salga parcialmente, pero mantener parte visible
+                    float minVisibleWidth = Math.Min(Width, 50f); // Al menos 100px o el ancho completo si es menor
+                    float maxX = _screenSize.X - minVisibleWidth;
+                    float minX = -(Width - minVisibleWidth);
+
+                    // Límites Y: la barra de título debe estar completamente visible
+                    float maxY = _screenSize.Y - titleBarHeight;
+                    float minY = 0f;
+
+                    // Aplicar límites
+                    newX = Math.Clamp(newX, minX, maxX);
+                    newY = Math.Clamp(newY, minY, maxY);
+                }
+                else
+                {
+                    // Si no hay barra de título, usar límites normales
+                    newX = Math.Clamp(newX, 0, Math.Max(0, _screenSize.X - Width));
+                    newY = Math.Clamp(newY, 0, Math.Max(0, _screenSize.Y - Height));
+                }
 
                 // Actualizar posición
                 X = newX;
@@ -325,11 +369,22 @@ namespace AvalonInjectLib
             if (_content == null) return;
 
             var contentArea = GetContentArea();
+
+            // Validar que las dimensiones no sean negativas
+            if (contentArea.Width <= 0 || contentArea.Height <= 0)
+            {
+                // Si el área de contenido es inválida, ocultar el contenido
+                _content.Visible = false;
+                return;
+            }
+
+            _content.Visible = true;
             _content.X = contentArea.X;
             _content.Y = contentArea.Y;
             _content.Width = contentArea.Width;
             _content.Height = contentArea.Height;
         }
+
 
         private Rect GetTitleBarRect()
         {
@@ -346,11 +401,18 @@ namespace AvalonInjectLib
             float contentY = HasTitleBar ? TITLE_BAR_HEIGHT : 0;
             contentY += HasBorder ? BORDER_WIDTH : 0;
 
+            float contentWidth = Width - (HasBorder ? BORDER_WIDTH * 2 : 0);
+            float contentHeight = Height - contentY - (HasBorder ? BORDER_WIDTH : 0);
+
+            // Asegurar que las dimensiones no sean negativas
+            contentWidth = Math.Max(0, contentWidth);
+            contentHeight = Math.Max(0, contentHeight);
+
             return new Rect(
                 HasBorder ? BORDER_WIDTH : 0,
                 contentY,
-                Width - (HasBorder ? BORDER_WIDTH * 2 : 0),
-                Height - contentY - (HasBorder ? BORDER_WIDTH : 0)
+                contentWidth,
+                contentHeight
             );
         }
     }

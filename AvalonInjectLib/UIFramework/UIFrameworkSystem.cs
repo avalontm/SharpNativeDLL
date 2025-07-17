@@ -1,17 +1,17 @@
 ﻿using static AvalonInjectLib.Structs;
 namespace AvalonInjectLib.UIFramework
 {
-    public static class UIFrameworkSystem
+    internal static class UIFrameworkSystem
     {
         private static UIControl? _focusedControl;
         private static readonly List<Window> _windows = new();
         private static readonly HashSet<UIControl> _controls = new();
 
-        public static UIControl? FocusedControl => _focusedControl;
-        public static bool HasModal => _windows.Count > 0;
+        internal static UIControl? FocusedControl => _focusedControl;
+        internal static bool HasModal => _windows.Count > 0;
 
 
-        public static void SetFocus(UIControl? control)
+        internal static void SetFocus(UIControl? control)
         {
             if (control == _focusedControl) return;
 
@@ -34,28 +34,28 @@ namespace AvalonInjectLib.UIFramework
 
         }
 
-        public static void ClearFocusControls()
+        internal static void ClearFocusControls()
         {
             _controls.Clear();
         }
 
-        public static void ClearFocus()
+        internal static void ClearFocus()
         {
             SetFocus(null);
         }
 
-        public static bool IsFocusable(UIControl control)
+        internal static bool IsFocusable(UIControl control)
         {
             return control.IsFocusable;
         }
 
-        public static void SetControl(UIControl control)
+        internal static void SetControl(UIControl control)
         {
             if (control == null) return;
             _controls.Add(control);
         }
 
-        public static bool IsValidClick()
+        internal static bool IsValidClick()
         {
             foreach(var control in _controls.Reverse())
             {

@@ -118,11 +118,11 @@ namespace AvalonInjectLib
             switch (CurrentAPI)
             {
                 case GraphicsAPI.OpenGL:
-                    OpenGLHook.DrawText(font.GetFontId(), text, position, apiColor, FontRenderer.GetScaleForDesiredSize(font.Size));
+                    OpenGLHook.DrawText(font.GetFontId(), text, position, apiColor, font.Size);
                     break;
 
                 case GraphicsAPI.DirectX:
-                    DirectXHook.DrawText(text, position, apiColor, FontRenderer.GetScaleForDesiredSize(font.Size));
+                    DirectXHook.DrawText(text, position, apiColor, font.Size);
                     break;
 
                 default:

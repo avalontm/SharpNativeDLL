@@ -1,7 +1,5 @@
-﻿using static AvalonInjectLib.Structs;
-using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using static AvalonInjectLib.FontRenderer;
+using static AvalonInjectLib.Structs;
 
 namespace AvalonInjectLib.UIFramework
 {
@@ -70,13 +68,16 @@ namespace AvalonInjectLib.UIFramework
 
             // Calcular posición del texto con indentación
             float textX = absPos.X + (Level * INDENT_SIZE) + TEXT_PADDING;
-            float textY = absPos.Y + (Height / 2);
+
+            // Centrar texto verticalmente usando métricas de la fuente
+            float textY = CalculateVerticalCenterPosition(absPos.Y, Height, Font, Text);
 
             // Dibujar flecha si tiene hijos
             if (HasChildren)
             {
                 float arrowX = textX + ARROW_PADDING;
-                DrawArrow(arrowX, textY, IsExpanded);
+                float arrowY = absPos.Y + (Height / 2); // La flecha se centra simple
+                DrawArrow(arrowX, arrowY, IsExpanded);
                 textX += ARROW_SIZE + ARROW_PADDING * 2;
             }
 
@@ -87,17 +88,29 @@ namespace AvalonInjectLib.UIFramework
             if (ShowWarning && !string.IsNullOrEmpty(WarningText))
             {
                 float warningX = absPos.X + Width - 100f; // Posición fija desde la derecha
-                Renderer.DrawText(WarningText, new Vector2(warningX, textY), WarningColor, Font);
+                float warningY = CalculateVerticalCenterPosition(absPos.Y, Height, Font, Text);
+                Renderer.DrawText(WarningText, new Vector2(warningX, warningY), WarningColor, Font);
             }
 
-            // Dibujar hijos si están expandidos
-            if (IsExpanded)
+            // IMPORTANTE: No dibujar hijos aquí - el MenuList se encarga de esto
+        }
+
+        /// <summary>
+        /// Calcula la posición Y para centrar el texto verticalmente dentro del elemento
+        /// </summary>
+        private float CalculateVerticalCenterPosition(float elementY, float elementHeight, Font font, string text)
+        {
+            if (font == null || !font.IsReady || string.IsNullOrEmpty(text))
             {
-                foreach (var child in Children)
-                {
-                    child.Draw();
-                }
+                return elementY + (elementHeight / 2);
             }
+
+            // Usar el mismo método que tu Label funcional
+            var textSize = font.MeasureText(text);
+            float textHeight = textSize.Y;
+
+            // Centrar usando el tamaño real del texto
+            return elementY + (elementHeight - textHeight) / 2;
         }
 
         private void DrawArrow(float x, float y, bool isExpanded)
@@ -144,15 +157,7 @@ namespace AvalonInjectLib.UIFramework
         public override void Update()
         {
             base.Update();
-
-            // Actualizar hijos si están expandidos
-            if (IsExpanded)
-            {
-                foreach (var child in Children)
-                {
-                    child.Update();
-                }
-            }
+            // No actualizar hijos aquí - el MenuList se encarga de esto
         }
 
         protected override void OnMouseEnter(Vector2 mousePos)
@@ -191,7 +196,24 @@ namespace AvalonInjectLib.UIFramework
             child.Parent = this.Parent; // Mismo contenedor padre
             Children.Add(child);
 
-            UpdateChildrenLayout();
+            // Configurar eventos si el parent ya está configurado
+            if (this.Parent != null && this.Parent is MenuList menuList)
+            {
+                SetupChildEvents(child, menuList);
+            }
+        }
+
+        private void SetupChildEvents(MenuItem child, MenuList menuList)
+        {
+            child.OnItemClick += menuList.OnItemSelected;
+            child.OnItemExpanded += menuList.OnItemExpanded;
+            child.OnItemCollapsed += menuList.OnItemCollapsed;
+
+            // Configurar recursivamente para los hijos del hijo
+            foreach (var grandChild in child.Children)
+            {
+                SetupChildEvents(grandChild, menuList);
+            }
         }
 
         public void RemoveChild(MenuItem child)
@@ -200,7 +222,6 @@ namespace AvalonInjectLib.UIFramework
 
             Children.Remove(child);
             child.ParentItem = null;
-            UpdateChildrenLayout();
         }
 
         public void ToggleExpansion()
@@ -215,8 +236,6 @@ namespace AvalonInjectLib.UIFramework
             {
                 OnItemCollapsed?.Invoke(this);
             }
-
-            UpdateChildrenLayout();
         }
 
         public void Expand()
@@ -225,7 +244,6 @@ namespace AvalonInjectLib.UIFramework
             {
                 IsExpanded = true;
                 OnItemExpanded?.Invoke(this);
-                UpdateChildrenLayout();
             }
         }
 
@@ -235,46 +253,14 @@ namespace AvalonInjectLib.UIFramework
             {
                 IsExpanded = false;
                 OnItemCollapsed?.Invoke(this);
-                UpdateChildrenLayout();
             }
         }
 
-        private void UpdateChildrenLayout()
-        {
-            if (!IsExpanded || !HasChildren) return;
+        // Método eliminado - UpdateChildrenLayout ya no es necesario
+        // El MenuList se encarga del layout
 
-            float currentY = Y + Height;
-
-            foreach (var child in Children)
-            {
-                child.X = X;
-                child.Y = currentY;
-                child.Width = Width;
-                child.Visible = true;
-
-                currentY += child.Height;
-
-                // Si el hijo también está expandido, actualizar su layout
-                if (child.IsExpanded)
-                {
-                    child.UpdateChildrenLayout();
-                    currentY += child.GetTotalChildrenHeight();
-                }
-            }
-        }
-
-        private float GetTotalChildrenHeight()
-        {
-            if (!IsExpanded || !HasChildren) return 0;
-
-            float totalHeight = 0;
-            foreach (var child in Children)
-            {
-                totalHeight += child.Height;
-                totalHeight += child.GetTotalChildrenHeight();
-            }
-            return totalHeight;
-        }
+        // Método eliminado - GetTotalChildrenHeight ya no es necesario
+        // El MenuList se encarga del cálculo de altura
 
         public void SetSelected(bool selected)
         {
@@ -316,6 +302,18 @@ namespace AvalonInjectLib.UIFramework
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Ajusta automáticamente la altura del elemento basándose en la fuente
+        /// </summary>
+        public void AutoSizeHeight()
+        {
+            if (Font != null && Font.IsReady)
+            {
+                float fontHeight = Font.LineHeight;
+                Height = Math.Max(fontHeight + (TEXT_PADDING * 2), DEFAULT_HEIGHT);
+            }
         }
 
         public override string ToString()

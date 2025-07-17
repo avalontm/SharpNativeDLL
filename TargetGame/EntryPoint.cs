@@ -79,6 +79,7 @@ namespace TargetGame
             Renderer.CurrentAPI = Renderer.GraphicsAPI.OpenGL;
             Renderer.InitializeGraphics(process.ProcessId);
             menuSystem.Initialize(process.ProcessId);
+            menuSystem.Process = process;
             Renderer.SetRenderCallback(menuSystem.Render);
         }
 

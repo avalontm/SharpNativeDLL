@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using static AvalonInjectLib.Structs;
@@ -68,6 +69,9 @@ namespace AvalonInjectLib
         internal static int ScreenWidth => _screenWidth;
         internal static int ScreenHeight => _screenHeight;
         internal static int[] _savedViewport = new int[4];
+        private static readonly object renderLock = new object();
+        private static volatile bool isRendering = false;
+
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool VirtualProtect(IntPtr lpAddress, uint dwSize, uint flNewProtect, out uint lpflOldProtect);
@@ -110,15 +114,20 @@ namespace AvalonInjectLib
         /// </summary>
         internal static void ExecuteRenderCallbacks()
         {
-            foreach (var callback in _renderCallbacks.ToList()) // Usamos ToList() para evitar modificaciones durante la iteración
+            lock (GlobalSync.MainLock)
             {
-                try
+                var callbacks = _renderCallbacks.ToArray();
+
+                foreach (var callback in callbacks)
                 {
-                    callback?.Invoke();
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error en render callback: {ex.Message}");
+                    try
+                    {
+                        callback?.Invoke();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error($"Error en callback de render: {ex}", "OpenGLHook");
+                    }
                 }
             }
         }
@@ -322,57 +331,31 @@ namespace AvalonInjectLib
             {
                 if (hdc != IntPtr.Zero)
                 {
-                    //Guardar contexto original
-                    IntPtr originalContext = OpenGLInterop.wglGetCurrentContext();
-                    IntPtr originalHdc = OpenGLInterop.wglGetCurrentDC();
-
-                    //Crear contexto temporal si no existe uno actual
-                    if (originalContext == IntPtr.Zero)
+                    using (GlobalSync.BeginRender())
                     {
-                        originalContext = OpenGLInterop.wglCreateContext(hdc);
-                        if (originalContext == IntPtr.Zero)
+                        try
                         {
-                            return CallOriginalWglSwapBuffers(hdc);
-                        }
-                        OpenGLInterop.wglMakeCurrent(hdc, originalContext);
-                    }
+                            SetupRendering();
+                            TextureRenderer.IsContexted = true;
+                            FontRenderer.IsContexted = true;
 
-                    try
-                    {
-                        //Configurar renderizado
-                        SetupRendering();
-
-                        TextureRenderer.IsContexted = true;
-                        FontRenderer.IsContexted = true;
-                       
-                        ProcessAllPendingFonts();
-                        ProcessAllPendingTextures();
-                       
-                        ExecuteRenderCallbacks();
-                    }
-                    finally
-                    {
-                        if (TextureRenderer.HasPendingTextures())
-                        {
+                            ProcessAllPendingFonts();
                             ProcessAllPendingTextures();
+
+                            ExecuteRenderCallbacks();
                         }
-
-                        RestoreRendering();
-
-                        TextureRenderer.IsContexted = false;
-                        FontRenderer.IsContexted = false;
-
-                        // Solo hacer MakeCurrent si teníamos un contexto original
-                        if (originalHdc != IntPtr.Zero)
+                        finally
                         {
-                            OpenGLInterop.wglMakeCurrent(originalHdc, originalContext);
+                            RestoreRendering();
+                            TextureRenderer.IsContexted = false;
+                            FontRenderer.IsContexted = false;
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Render error: {ex}");
+                Logger.Error($"HookedWglSwapBuffers: {ex}", "OpenGLHook");
             }
             return CallOriginalWglSwapBuffers(hdc);
         }

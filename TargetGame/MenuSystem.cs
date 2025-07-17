@@ -1,477 +1,341 @@
 ﻿using AvalonInjectLib;
 using AvalonInjectLib.UIFramework;
 using static AvalonInjectLib.Structs;
-using System;
 
 namespace TargetGame
 {
     public class MenuSystem : UIFrameworkRenderSystem
     {
-        public Window? MainWindow { get; private set; }
-        public bool IsInitialized { get; private set; }
-        private MenuList _mainMenu;
-        private Panel _contentPanel;
+        // Constantes de memoria
+        const int PLAYER_MOVE_TO = 0xA51220;
+        const int PLAYER_SCORE = 0xEFFE54;
+        const int PLAYER_HEALTH = 0xEFFF00;
+        const int PLAYER_LEVEL = 0xFAFE70;
+        const int PLAYER_NAME = 0x001F008;
+
+        // Proceso y estado
+        public ProcessEntry Process { get; set; }
+        private bool _isInitialized = false;
+        private bool _isOrcWalking = false;
+
+        // UI Elements
+        public Window MainWindow { get; private set; }
+        private TabControl _tabControl;
         private Label _statusLabel;
-        private Button _toggleButton;
-        private CheckBox _enableCheckbox;
-        private Slider _valueSlider;
-        private TextBox _idTextBox;
+
+        // Player Info Controls
+        private Slider _scoreSlider;
+        private Slider _healthSlider;
+        private Slider _levelSlider;
+        private TextBox _playerNameTextBox;
+        private Button _applyButton;
+
+        // OrcWalk Controls
+        private TextBox _walkPointsTextBox;
+        private Button _orcWalkButton;
+        private float _walkSpeed = 1.0f;
+        private List<Vector2> _walkPoints = new List<Vector2>();
+        private int _currentWalkPoint = 0;
+        private DateTime _lastWalkTime;
 
         public void Initialize(uint processId)
         {
-            if (IsInitialized) return;
+            if (_isInitialized) return;
 
             Font.Initialize();
             InputSystem.Initialize(processId);
-            CreateControls();
-            IsInitialized = true;
+            CreateUI();
+            _isInitialized = true;
         }
 
-        private void CreateControls()
+        private void CreateUI()
         {
-            // Crear ventana principal
+            // Configurar ventana principal
             MainWindow = new Window
             {
-                Title = "Menu System - Skinchanger",
-                Bounds = new Rect(100, 100, 800, 600),
+                Title = "Game Controller",
+                Width = 600,
+                Height = 500,
                 BackColor = new Color(30, 30, 30)
             };
 
-            // Crear el menú principal (lado izquierdo)
-            CreateMainMenu();
-
-            // Crear panel de contenido (lado derecho)
-            CreateContentPanel();
-
-            // Configurar ventana
-            var mainPanel = new Panel
+            // Crear TabControl
+            _tabControl = new TabControl
             {
-                X = 0,
-                Y = 0,
-                Width = 800,
-                Height = 600,
-                BackColor = Color.FromArgb(30, 30, 30)
+                Width = 580,
+                Height = 430
             };
 
-            mainPanel.AddChild(_mainMenu);
-            mainPanel.AddChild(_contentPanel);
+            // Añadir pestañas
+            CreatePlayerInfoTab();
+            CreateOrcWalkTab();
 
-            MainWindow.Content = mainPanel;
-            MainWindow.Show();
-        }
-
-        private void CreateMainMenu()
-        {
-            _mainMenu = new MenuList
-            {
-                X = 10,
-                Y = 10,
-                Width = 280,
-                Height = 580,
-                BackgroundColor = Color.FromArgb(35, 35, 35),
-                BorderColor = Color.FromArgb(100, 100, 100),
-                ItemHeight = 25f,
-                ShowBorder = true
-            };
-
-            // Suscribirse a eventos del menú
-            _mainMenu.OnItemSelected += OnMenuItemSelected;
-            _mainMenu.OnItemExpanded += OnMenuItemExpanded;
-            _mainMenu.OnItemCollapsed += OnMenuItemCollapsed;
-
-            // Crear la estructura del menú
-            CreateMenuStructure();
-        }
-
-        private void CreateMenuStructure()
-        {
-            // Crear elementos principales
-            var softHub = CreateMenuItem("Soft[HUB]", Color.FromArgb(255, 165, 0));
-            var orbwalker = CreateMenuItem("Orbwalker");
-            var evade = CreateMenuItem("Evade");
-            var summonerSpells = CreateMenuItem("Summoner Spells");
-            var information = CreateMenuItem("Information");
-            var champions = CreateMenuItem("Champions");
-            var skinchanger = CreateMenuItem("Skinchanger", Color.FromArgb(255, 165, 0));
-            var memory = CreateMenuItem("Memory");
-            var settings = CreateMenuItem("Settings");
-            var veigar = CreateMenuItem("Veigar");
-
-            // Agregar elementos raíz
-            _mainMenu.AddRootItem(softHub);
-            _mainMenu.AddRootItem(orbwalker);
-            _mainMenu.AddRootItem(evade);
-            _mainMenu.AddRootItem(summonerSpells);
-            _mainMenu.AddRootItem(information);
-            _mainMenu.AddRootItem(champions);
-            _mainMenu.AddRootItem(skinchanger);
-            _mainMenu.AddRootItem(memory);
-            _mainMenu.AddRootItem(settings);
-            _mainMenu.AddRootItem(veigar);
-
-            // Configurar Skinchanger
-            CreateSkinchanGerMenu(skinchanger);
-            skinchanger.Expand();
-            _mainMenu.SetSelectedItem(skinchanger);
-        }
-
-        private void CreateSkinchanGerMenu(MenuItem skinchanger)
-        {
-            // Agregar advertencia
-            var warningItem = CreateMenuItem("Use at your own risk!");
-            warningItem.ForeColor = Color.FromArgb(255, 165, 0);
-            skinchanger.AddChild(warningItem);
-
-            // Crear subelementos
-            var champion = CreateMenuItem("Champion");
-            var wards = CreateMenuItem("Wards");
-            var turettes = CreateMenuItem("Turettes");
-            var laneMinions = CreateMenuItem("Lane Minions");
-
-            skinchanger.AddChild(champion);
-            skinchanger.AddChild(wards);
-            skinchanger.AddChild(turettes);
-            skinchanger.AddChild(laneMinions);
-
-            // Configurar Lane Minions
-            CreateLaneMinionsMenu(laneMinions);
-            laneMinions.Expand();
-            _mainMenu.SetSelectedItem(laneMinions);
-        }
-
-        private void CreateLaneMinionsMenu(MenuItem laneMinions)
-        {
-            // Crear configuración de Enable
-            var enable = CreateMenuItem("Enable [ON]");
-            enable.ForeColor = Color.FromArgb(0, 255, 0); // Verde para ON
-            enable.Tag = "enable_toggle";
-
-            // Crear configuración de minions
-            var blueMinions = CreateMenuItem("Blue Lane Minions ID: 8");
-            blueMinions.ShowWarning = true;
-            blueMinions.WarningText = "⚠";
-            blueMinions.Tag = "blue_minions";
-
-            var redMinions = CreateMenuItem("Red Lane Minions ID: 0");
-            redMinions.ShowWarning = true;
-            redMinions.WarningText = "⚠";
-            redMinions.Tag = "red_minions";
-
-            laneMinions.AddChild(enable);
-            laneMinions.AddChild(blueMinions);
-            laneMinions.AddChild(redMinions);
-        }
-
-        private MenuItem CreateMenuItem(string text, Color? selectedColor = null)
-        {
-            return new MenuItem(text)
-            {
-                ForeColor = Color.White,
-                NormalColor = Color.FromArgb(45, 45, 45),
-                HoverColor = Color.FromArgb(60, 60, 60),
-                SelectedColor = selectedColor ?? Color.FromArgb(255, 165, 0),
-                Font = Font.GetDefaultFont()
-            };
-        }
-
-        private void CreateContentPanel()
-        {
-            _contentPanel = new Panel
-            {
-                X = 300,
-                Y = 10,
-                Width = 480,
-                Height = 580,
-                BackColor = Color.FromArgb(40, 40, 40),
-                BorderColor = Color.FromArgb(100, 100, 100),
-                BorderWidth = 1f,
-                ShowBorder = true
-            };
-
-            // Título del panel
-            var titleLabel = new Label
-            {
-                Text = "Configuration Panel",
-                X = 10,
-                Y = 10,
-                Width = 460,
-                Height = 30,
-                ForeColor = Color.White,
-                Font = Font.GetDefaultFont(),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-
-            // Label de estado
+            // Status label
             _statusLabel = new Label
             {
-                Text = "Select an option from the menu",
-                X = 10,
-                Y = 50,
-                Width = 460,
+                Y = 440,
+                Width = 580,
                 Height = 20,
-                ForeColor = Color.FromArgb(200, 200, 200),
-                Font = Font.GetDefaultFont()
+                ForeColor = Color.FromArgb(200, 200, 200)
             };
 
-            // Botón de toggle
-            _toggleButton = new Button
+            // Añadir elementos a la ventana
+            MainWindow.Content = _tabControl;
+
+            // Configurar eventos
+            SetupEvents();
+ 
+        }
+
+        private void CreatePlayerInfoTab()
+        {
+            var playerTab = new TabPage("Player Info");
+            int yPos = 10;
+            int panelHeight = 60; // Reducido ya que no necesitamos espacio para el label extra
+            int spacing = 10;
+
+            // Score Control
+            _scoreSlider = CreateSlider(10, yPos, "Score", Color.FromArgb(255, 215, 0), 0, 999999);
+            playerTab.AddChild(_scoreSlider);
+            yPos += panelHeight + spacing;
+
+            // Health Control
+            _healthSlider = CreateSlider(10, yPos, "Health", Color.FromArgb(255, 100, 100), 1, 9999);
+            playerTab.AddChild(_healthSlider);
+            yPos += panelHeight + spacing;
+
+            // Level Control
+            _levelSlider = CreateSlider(10, yPos, "Level", Color.FromArgb(100, 149, 237), 1, 18);
+            playerTab.AddChild(_levelSlider);
+            yPos += panelHeight + spacing;
+
+            // Name Control
+            var namePanel = new Panel
             {
-                Text = "Toggle ON/OFF",
                 X = 10,
-                Y = 80,
-                Width = 120,
-                Height = 30,
-                BackColor = Color.FromArgb(0, 122, 204),
-                Visible = false
+                Y = yPos,
+                Width = 560,
+                Height = 80
             };
 
-            _toggleButton.Click += (pos) => {
-                var selectedItem = _mainMenu.SelectedItem;
-                if (selectedItem?.Tag?.ToString() == "enable_toggle")
-                {
-                    ToggleEnableState(selectedItem);
-                }
-            };
-
-            // Checkbox de habilitación
-            _enableCheckbox = new CheckBox
+            namePanel.AddChild(new Label
             {
-                Text = "Enable Feature",
-                X = 10,
-                Y = 120,
-                Width = 150,
-                Height = 20,
-                BoxColor = Color.FromArgb(70, 130, 180),
-                CheckColor = Color.Green,
-                HoverBoxColor = Color.FromArgb(100, 149, 237),
-                PressedBoxColor = Color.FromArgb(30, 144, 255),
-                Visible = false
-            };
-
-            _enableCheckbox.CheckedChanged += (isChecked) => {
-                UpdateConfigurationStatus(isChecked);
-            };
-
-            // Slider para valores
-            _valueSlider = new Slider
-            {
-                Text = "Minion ID",
-                X = 10,
-                Y = 160,
+                Text = "Player Name:",
+                ForeColor = Color.FromArgb(144, 238, 144),
                 Width = 200,
-                Height = 25,
-                Value = 8,
-                MinValue = 0,
-                MaxValue = 20,
-                TrackColor = Color.FromArgb(70, 70, 70),
-                FillColor = Color.FromArgb(0, 122, 204),
-                ThumbColor = Color.White,
-                ThumbHoverColor = Color.FromArgb(220, 220, 220),
-                ShowValue = true,
-                Visible = false
-            };
+                Y = 10
+            });
 
-            _valueSlider.ValueChanged += (value) => {
-                UpdateMinionId((int)value);
+            _playerNameTextBox = new TextBox
+            {
+                Y = 40,
+                Width = 300,
+                Height = 30,
+                Text = "Player"
             };
+            namePanel.AddChild(_playerNameTextBox);
+            playerTab.AddChild(namePanel);
+            yPos += 90;
 
-            // TextBox para ID personalizado
-            _idTextBox = new TextBox
+            // Apply Button
+            _applyButton = new Button
+            {
+                Y = yPos,
+                Width = 560,
+                Height = 40,
+                Text = "Apply Changes",
+                BackColor = Color.FromArgb(0, 180, 0)
+            };
+            playerTab.AddChild(_applyButton);
+
+            _tabControl.AddTab(playerTab);
+        }
+
+        private void CreateOrcWalkTab()
+        {
+            var orcWalkTab = new TabPage("OrcWalk");
+            int yPos = 10;
+            int panelHeight = 60;
+            int spacing = 15;
+
+            // Walk Points Configuration
+            var walkPointsPanel = new Panel
             {
                 X = 10,
-                Y = 200,
-                Width = 100,
-                Height = 25,
-                PlaceholderText = "Custom ID...",
-                BackColor = Color.White,
-                ForeColor = Color.Black,
-                BorderColor = Color.FromArgb(100, 100, 100),
-                BorderColorFocus = Color.FromArgb(0, 122, 204),
-                MaxLength = 10,
-                Visible = false
+                Y = yPos,
+                Width = 560,
+                Height = 120
             };
 
-            _idTextBox.TextChanged += (text) => {
-                if (int.TryParse(text, out int id))
-                {
-                    UpdateCustomMinionId(id);
-                }
-            };
-
-            // Agregar controles al panel
-            _contentPanel.AddChild(titleLabel);
-            _contentPanel.AddChild(_statusLabel);
-            _contentPanel.AddChild(_toggleButton);
-            _contentPanel.AddChild(_enableCheckbox);
-            _contentPanel.AddChild(_valueSlider);
-            _contentPanel.AddChild(_idTextBox);
-        }
-
-        // Manejadores de eventos del menú
-        private void OnMenuItemSelected(MenuItem item)
-        {
-            Console.WriteLine($"Menu item selected: {item.Text}");
-
-            // Ocultar todos los controles de configuración
-            HideAllConfigControls();
-
-            // Mostrar controles específicos según el elemento seleccionado
-            ShowConfigForItem(item);
-        }
-
-        private void OnMenuItemExpanded(MenuItem item)
-        {
-            Console.WriteLine($"Menu item expanded: {item.Text}");
-            _mainMenu.ScrollToItem(item);
-        }
-
-        private void OnMenuItemCollapsed(MenuItem item)
-        {
-            Console.WriteLine($"Menu item collapsed: {item.Text}");
-        }
-
-        private void ShowConfigForItem(MenuItem item)
-        {
-            _statusLabel.Text = $"Configuring: {item.Text}";
-
-            switch (item.Tag?.ToString())
+            walkPointsPanel.AddChild(new Label
             {
-                case "enable_toggle":
-                    _toggleButton.Visible = true;
-                    _enableCheckbox.Visible = true;
-                    _statusLabel.Text = "Enable or disable the feature";
-                    break;
+                Text = "Path Points (x1,y1;x2,y2;...):",
+                ForeColor = Color.FromArgb(200, 100, 200),
+                Width = 300,
+                Y = 10
+            });
 
-                case "blue_minions":
-                    _valueSlider.Visible = true;
-                    _idTextBox.Visible = true;
-                    _valueSlider.Value = 8;
-                    _statusLabel.Text = "Configure Blue Lane Minions ID";
-                    break;
+            _walkPointsTextBox = new TextBox
+            {
+                Text = "-0.5,0.5;0.5,0.5;0.5,-0.5",
+                Y = 40,
+                Width = 560,
+                Height = 30,
+                PlaceholderText = "Example: -0.5,0.5;0.5,0.5;0.5,-0.5"
+            };
+            walkPointsPanel.AddChild(_walkPointsTextBox);
+            orcWalkTab.AddChild(walkPointsPanel);
+            yPos += 130;
 
-                case "red_minions":
-                    _valueSlider.Visible = true;
-                    _idTextBox.Visible = true;
-                    _valueSlider.Value = 0;
-                    _statusLabel.Text = "Configure Red Lane Minions ID";
-                    break;
+            // Walk Speed Control
+            var speedSlider = CreateSlider(10, yPos, "Walk Speed", Color.FromArgb(150, 150, 255), 0.1f, 5.0f);
+            orcWalkTab.AddChild(speedSlider);
+            yPos += panelHeight + spacing;
 
-                default:
-                    _statusLabel.Text = $"Selected: {item.Text}";
-                    break;
+            // OrcWalk Button
+            _orcWalkButton = new Button
+            {
+                Y = yPos,
+                Width = 560,
+                Height = 40,
+                Text = "Start OrcWalk",
+                BackColor = Color.FromArgb(70, 70, 150)
+            };
+            orcWalkTab.AddChild(_orcWalkButton);
+
+            _tabControl.AddTab(orcWalkTab);
+        }
+
+        private Slider CreateSlider(int x, int y, string title, Color color, float minValue, float maxValue)
+        {
+            return new Slider
+            {
+                X = x,
+                Y = y,
+                Width = 560,
+                Height = 50, // Altura un poco mayor para mejor manipulación
+                Text = title,
+                MinValue = minValue,
+                MaxValue = maxValue,
+                FillColor = color,
+                IsIntegerValue = (title != "Walk Speed")
+            };
+        }
+
+        private void SetupEvents()
+        {
+            _applyButton.Click += ApplyPlayerChanges;
+            _orcWalkButton.Click += ToggleOrcWalk;
+        }
+
+        private void ApplyPlayerChanges(Vector2 pos)
+        {
+            // Actualizar valores en el juego
+            if (Process != null)
+            {
+                Process.Write(PLAYER_SCORE, (int)_scoreSlider.Value);
+                Process.Write(PLAYER_HEALTH, _healthSlider.Value);
+                Process.Write(PLAYER_LEVEL, (int)_levelSlider.Value);
+                Process.WriteString(PLAYER_NAME, _playerNameTextBox.Text);
             }
+
+            ShowStatusMessage("Player changes applied successfully!", Color.FromArgb(0, 255, 0));
         }
 
-        private void HideAllConfigControls()
+        private void ToggleOrcWalk(Vector2 pos)
         {
-            _toggleButton.Visible = false;
-            _enableCheckbox.Visible = false;
-            _valueSlider.Visible = false;
-            _idTextBox.Visible = false;
-        }
+            _isOrcWalking = !_isOrcWalking;
 
-        private void ToggleEnableState(MenuItem enableItem)
-        {
-            if (enableItem.Text.Contains("[ON]"))
+            if (_isOrcWalking)
             {
-                enableItem.Text = enableItem.Text.Replace("[ON]", "[OFF]");
-                enableItem.ForeColor = Color.FromArgb(255, 0, 0); // Rojo para OFF
-                _enableCheckbox.Checked = false;
+                ParseWalkPoints();
+                if (_walkPoints.Count == 0)
+                {
+                    ShowStatusMessage("No valid walk points defined!", Color.FromArgb(255, 100, 100));
+                    _isOrcWalking = false;
+                    return;
+                }
+
+                _currentWalkPoint = 0;
+                _lastWalkTime = DateTime.Now;
+                _orcWalkButton.Text = "Stop OrcWalk";
+                _orcWalkButton.BackColor = Color.FromArgb(150, 70, 70);
+                ShowStatusMessage("OrcWalk started!", Color.FromArgb(0, 255, 0));
             }
             else
             {
-                enableItem.Text = enableItem.Text.Replace("[OFF]", "[ON]");
-                enableItem.ForeColor = Color.FromArgb(0, 255, 0); // Verde para ON
-                _enableCheckbox.Checked = true;
+                _orcWalkButton.Text = "Start OrcWalk";
+                _orcWalkButton.BackColor = Color.FromArgb(70, 70, 150);
+                ShowStatusMessage("OrcWalk stopped!", Color.FromArgb(200, 200, 200));
             }
-
-            Console.WriteLine($"Feature toggled: {enableItem.Text}");
         }
 
-        private void UpdateConfigurationStatus(bool isEnabled)
+        private void ParseWalkPoints()
         {
-            _statusLabel.Text = $"Configuration {(isEnabled ? "enabled" : "disabled")}";
-            Console.WriteLine($"Configuration changed: {isEnabled}");
-        }
+            _walkPoints.Clear();
+            var pointStrings = _walkPointsTextBox.Text.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
 
-        private void UpdateMinionId(int id)
-        {
-            var selectedItem = _mainMenu.SelectedItem;
-            if (selectedItem?.Tag?.ToString() == "blue_minions")
+            foreach (var pointStr in pointStrings)
             {
-                selectedItem.Text = $"Blue Lane Minions ID: {id}";
+                var coords = pointStr.Split(',');
+                if (coords.Length == 2 &&
+                    float.TryParse(coords[0], out float x) &&
+                    float.TryParse(coords[1], out float y))
+                {
+                    _walkPoints.Add(new Vector2(x, y));
+                }
             }
-            else if (selectedItem?.Tag?.ToString() == "red_minions")
-            {
-                selectedItem.Text = $"Red Lane Minions ID: {id}";
-            }
-
-            Console.WriteLine($"Minion ID updated to: {id}");
         }
 
-        private void UpdateCustomMinionId(int id)
+        private void ShowStatusMessage(string message, Color color)
         {
-            _valueSlider.Value = id;
-            Console.WriteLine($"Custom Minion ID set to: {id}");
+            _statusLabel.Text = message;
+            _statusLabel.ForeColor = color;
+        }
+
+        public void Update()
+        {
+            if (_isOrcWalking && _walkPoints.Count > 0)
+            {
+                if ((DateTime.Now - _lastWalkTime).TotalSeconds >= _walkSpeed)
+                {
+                    MoveToNextPoint();
+                    _lastWalkTime = DateTime.Now;
+                }
+            }
+        }
+
+        private void MoveToNextPoint()
+        {
+            var target = _walkPoints[_currentWalkPoint];
+            RemoteFunctionExecutor.CallRemoteFunction(Process.Handle, PLAYER_MOVE_TO, target.X, target.Y);
+
+            _currentWalkPoint = (_currentWalkPoint + 1) % _walkPoints.Count;
         }
 
         public void Render()
         {
-            if (IsInitialized && MainWindow != null)
+            Update();
+
+            if (InputSystem.GetKeyDown(Keys.F1))
+            {
+                MainWindow.Visible = !MainWindow.Visible;
+            }
+
+            if (_isInitialized && MainWindow != null)
             {
                 MainWindow.Update();
                 MainWindow.Draw();
             }
+
+
+            InputSystem.Update();
         }
 
         public void Shutdown()
         {
             MainWindow?.Close();
-            MainWindow = null;
-            IsInitialized = false;
-        }
-
-        // Métodos públicos para interactuar con el menú
-        public void SelectMenuItem(string itemName)
-        {
-            var item = _mainMenu.FindItem(itemName);
-            if (item != null)
-            {
-                _mainMenu.SetSelectedItem(item);
-            }
-        }
-
-        public void ExpandMenuItem(string itemName)
-        {
-            var item = _mainMenu.FindItem(itemName);
-            if (item != null)
-            {
-                item.Expand();
-            }
-        }
-
-        public void CollapseMenuItem(string itemName)
-        {
-            var item = _mainMenu.FindItem(itemName);
-            if (item != null)
-            {
-                item.Collapse();
-            }
-        }
-
-        public MenuItem GetSelectedItem()
-        {
-            return _mainMenu.SelectedItem;
-        }
-
-        public void ScrollToItem(string itemName)
-        {
-            var item = _mainMenu.FindItem(itemName);
-            if (item != null)
-            {
-                _mainMenu.ScrollToItem(item);
-            }
+            _isInitialized = false;
         }
     }
 }

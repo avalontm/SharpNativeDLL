@@ -45,18 +45,6 @@ namespace AvalonInjectLib
             return MemoryManager.Read<T>(Handle, calculatedAddress.Address, offsets);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public T Read<T>(int offset) where T : unmanaged
-        {
-            return MemoryManager.Read<T>(Handle, _moduleBase + offset);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public T Read<T>(int offset, params int[] offsets) where T : unmanaged
-        {
-            return MemoryManager.Read<T>(Handle, _moduleBase + offset, offsets);
-        }
-
         #endregion
 
         #region ReadString Methods
@@ -91,16 +79,6 @@ namespace AvalonInjectLib
             return MemoryManager.ReadString(Handle, calculatedAddress.Address, maxLength, unicode, offsets);
         }
 
-        public string ReadString(int offset, int maxLength = 256, bool unicode = false)
-        {
-            return MemoryManager.ReadString(Handle, _moduleBase + offset, maxLength, unicode);
-        }
-
-        public string ReadString(int offset, int maxLength = 256, bool unicode = false, params int[] offsets)
-        {
-            return MemoryManager.ReadString(Handle, _moduleBase + offset, maxLength, unicode, offsets);
-        }
-
         #endregion
 
         #region Write Methods
@@ -127,18 +105,6 @@ namespace AvalonInjectLib
         public void Write<T>(CalculatedAddress calculatedAddress, T value, params int[] offsets) where T : unmanaged
         {
             MemoryManager.Write(Handle, calculatedAddress.Address, value, offsets);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Write<T>(int offset, T value) where T : unmanaged
-        {
-            MemoryManager.Write(Handle, _moduleBase + offset, value);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Write<T>(int offset, T value, params int[] offsets) where T : unmanaged
-        {
-            MemoryManager.Write(Handle, _moduleBase + offset, value, offsets);
         }
 
         #endregion
@@ -173,16 +139,6 @@ namespace AvalonInjectLib
         public void WriteString(CalculatedAddress calculatedAddress, string value, bool unicode = false, params int[] offsets)
         {
             MemoryManager.WriteString(Handle, calculatedAddress.Address, value, unicode, offsets);
-        }
-
-        public void WriteString(int offset, string value, bool unicode = false)
-        {
-            MemoryManager.WriteString(Handle, _moduleBase + offset, value, unicode);
-        }
-
-        public void WriteString(int offset, string value, bool unicode = false, params int[] offsets)
-        {
-            MemoryManager.WriteString(Handle, _moduleBase + offset, value, unicode, offsets);
         }
 
         #endregion

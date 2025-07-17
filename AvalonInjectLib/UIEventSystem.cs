@@ -3,7 +3,7 @@ using static AvalonInjectLib.Structs;
 
 namespace AvalonInjectLib
 {
-    public static class UIEventSystem
+    internal static class UIEventSystem
     {
         // Estados del teclado
         private static char? _lastKeyPressed;

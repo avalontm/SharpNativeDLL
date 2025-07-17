@@ -55,6 +55,11 @@ namespace AvalonInjectLib
         internal const int HWND_TOPMOST = -1;
         internal const int HWND_BOTTOM = 1;
 
+        [Flags]
+        internal enum ProcessAccessFlags : uint
+        {
+            All = 0x001F0FFF,
+        }
 
         [DllImport("kernel32.dll")]
         internal static extern bool SetConsoleOutputCP(uint wCodePageID);
@@ -106,11 +111,19 @@ namespace AvalonInjectLib
 
         [DllImport("kernel32.dll", SetLastError = true)]
         internal static extern bool WriteProcessMemory(
-         IntPtr hProcess,
-         IntPtr lpBaseAddress,
-         byte[] lpBuffer,
-         UIntPtr nSize,
-         IntPtr lpNumberOfBytesWritten);
+            IntPtr hProcess,
+            IntPtr lpBaseAddress,
+            byte* lpBuffer,
+            UIntPtr nSize,
+            out IntPtr lpNumberOfBytesWritten);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        internal static extern bool WriteProcessMemory(
+          IntPtr hProcess,
+          IntPtr lpBaseAddress,
+          nint* lpBuffer,
+          UIntPtr nSize,
+          out IntPtr lpNumberOfBytesWritten);
 
         // En tu clase WinInterop o donde tengas tus imports
         [DllImport("kernel32.dll", SetLastError = true)]
@@ -135,12 +148,25 @@ namespace AvalonInjectLib
             uint flNewProtect,
             out uint lpflOldProtect);
 
-        [DllImport("kernel32", SetLastError = true)]
+        // Dentro de tu clase WinInterop
+        [DllImport("kernel32.dll", SetLastError = true)]
         internal static extern int VirtualQueryEx(
             IntPtr hProcess,
             IntPtr lpAddress,
             out MEMORY_BASIC_INFORMATION lpBuffer,
             uint dwLength);
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct MEMORY_BASIC_INFORMATION
+        {
+            public IntPtr BaseAddress;
+            public IntPtr AllocationBase;
+            public uint AllocationProtect;
+            public IntPtr RegionSize;
+            public uint State;
+            public uint Protect;
+            public uint Type;
+        }
 
         [DllImport("kernel32", SetLastError = true)]
         internal static extern uint GetLastError();
@@ -797,6 +823,14 @@ namespace AvalonInjectLib
      uint dwFreeType           // Tipo de liberación (MEM_RELEASE = 0x8000)
  );
 
-   
+        [DllImport("kernel32.dll")]
+        internal static extern uint WaitForSingleObject(
+      IntPtr hHandle,
+      uint dwMilliseconds);
+
+        internal static nint OpenProcess(object all, bool v, int targetProcessId)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

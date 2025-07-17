@@ -6,10 +6,64 @@ namespace AvalonInjectLib.UIFramework
     public abstract class UIControl
     {
         // Propiedades básicas
-        public float X { get; set; }
-        public float Y { get; set; }
-        public float Width { get; set; } = 100f;
-        public float Height { get; set; } = 25f;
+        private float _x = 0f;
+        private float _y = 0f;
+        private float _width = 100f;
+        private float _height = 25f;
+
+        // Propiedades básicas con notificación de cambios
+        public float X
+        {
+            get => _x;
+            set
+            {
+                if (_x != value)
+                {
+                    _x = value;
+                    OnPositionChanged();
+                }
+            }
+        }
+
+        public float Y
+        {
+            get => _y;
+            set
+            {
+                if (_y != value)
+                {
+                    _y = value;
+                    OnPositionChanged();
+                }
+            }
+        }
+
+        public float Width
+        {
+            get => _width;
+            set
+            {
+                if (_width != value)
+                {
+                    _width = value;
+                    OnSizeChanged();
+                }
+            }
+        }
+
+        public float Height
+        {
+            get => _height;
+            set
+            {
+                if (_height != value)
+                {
+                    _height = value;
+                    OnSizeChanged();
+                }
+            }
+        }
+
         public bool Visible { get; set; } = true;
         public bool Enabled { get; set; } = true;
         public string Name { get; set; } = string.Empty;
@@ -179,23 +233,15 @@ namespace AvalonInjectLib.UIFramework
             return new Rect(pos.X, pos.Y, Width, Height);
         }
 
-        /// <summary>
-        /// Propiedad para acceder a los límites del control (coordenadas relativas al padre)
-        /// </summary>
-        public Rect Bounds
-        {
-            get => new Rect(X, Y, Width, Height);
-            set
-            {
-                X = value.X;
-                Y = value.Y;
-                Width = value.Width;
-                Height = value.Height;
 
-                // Notificar cambio de tamaño si es necesario
-                OnSizeChanged();
-            }
+        /// <summary>
+        /// Método llamado cuando cambia la posición del control (X o Y)
+        /// </summary>
+        protected virtual void OnPositionChanged()
+        {
+            // Puede ser sobrescrito por controles hijos para manejar cambios de posición
         }
+
         /// <summary>
         /// Método llamado cuando cambia el tamaño del control
         /// </summary>

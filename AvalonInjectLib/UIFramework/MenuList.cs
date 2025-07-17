@@ -75,19 +75,18 @@ namespace AvalonInjectLib.UIFramework
 
         private void DrawItemAndChildren(MenuItem item, Rect contentArea, ref float currentY)
         {
+            var menuListAbsPos = GetAbsolutePosition();
+
             // Verificar si el elemento está en el área visible
             if (currentY + ItemHeight > contentArea.Y && currentY < contentArea.Y + contentArea.Height)
             {
-                // Configurar posición del elemento
-                var itemAbsPos = GetAbsolutePosition();
+                // Configurar posición del elemento RELATIVA al MenuList
                 item.X = BorderWidth;
-                item.Y = currentY - itemAbsPos.Y;
+                item.Y = currentY - menuListAbsPos.Y;
                 item.Width = Width - (BorderWidth * 2);
                 item.Height = ItemHeight;
                 item.Visible = true;
-
-                // Dibujar el elemento
-                item.Draw();
+                item.Parent = this; // Asegurar que el parent esté configurado correctamente
             }
             else
             {
@@ -95,6 +94,9 @@ namespace AvalonInjectLib.UIFramework
             }
 
             currentY += ItemHeight;
+
+            //Dibujar Item
+            item.Draw();
 
             // Dibujar hijos si están expandidos
             if (item.IsExpanded)
@@ -165,15 +167,25 @@ namespace AvalonInjectLib.UIFramework
         {
             if (item == null) return;
 
+            SetupMenuItem(item, 0);
+            _rootItems.Add(item);
+            UpdateLayout();
+        }
+
+        private void SetupMenuItem(MenuItem item, int level)
+        {
             item.Parent = this;
-            item.Level = 0;
+            item.Level = level;
             item.Height = ItemHeight;
             item.OnItemClick += OnItemClickHandler;
             item.OnItemExpanded += OnItemExpandedHandler;
             item.OnItemCollapsed += OnItemCollapsedHandler;
 
-            _rootItems.Add(item);
-            UpdateLayout();
+            // Configurar recursivamente los hijos
+            foreach (var child in item.Children)
+            {
+                SetupMenuItem(child, level + 1);
+            }
         }
 
         public void RemoveRootItem(MenuItem item)
@@ -181,22 +193,29 @@ namespace AvalonInjectLib.UIFramework
             if (item == null) return;
 
             _rootItems.Remove(item);
+            CleanupMenuItem(item);
+            UpdateLayout();
+        }
+
+        private void CleanupMenuItem(MenuItem item)
+        {
             item.Parent = null;
             item.OnItemClick -= OnItemClickHandler;
             item.OnItemExpanded -= OnItemExpandedHandler;
             item.OnItemCollapsed -= OnItemCollapsedHandler;
 
-            UpdateLayout();
+            // Limpiar recursivamente los hijos
+            foreach (var child in item.Children)
+            {
+                CleanupMenuItem(child);
+            }
         }
 
         public void ClearItems()
         {
             foreach (var item in _rootItems)
             {
-                item.Parent = null;
-                item.OnItemClick -= OnItemClickHandler;
-                item.OnItemExpanded -= OnItemExpandedHandler;
-                item.OnItemCollapsed -= OnItemCollapsedHandler;
+                CleanupMenuItem(item);
             }
 
             _rootItems.Clear();
@@ -206,30 +225,9 @@ namespace AvalonInjectLib.UIFramework
 
         private void UpdateLayout()
         {
-            float currentY = BorderWidth;
-
-            foreach (var item in _rootItems)
-            {
-                UpdateItemLayout(item, ref currentY);
-            }
-        }
-
-        private void UpdateItemLayout(MenuItem item, ref float currentY)
-        {
-            item.X = BorderWidth;
-            item.Y = currentY;
-            item.Width = Width - (BorderWidth * 2);
-            item.Height = ItemHeight;
-
-            currentY += ItemHeight;
-
-            if (item.IsExpanded)
-            {
-                foreach (var child in item.Children)
-                {
-                    UpdateItemLayout(child, ref currentY);
-                }
-            }
+            // No necesitamos actualizar layout aquí porque se maneja en DrawItemsWithScroll
+            // Solo actualizamos el scroll máximo
+            UpdateMaxScroll();
         }
 
         // Manejadores de eventos
@@ -371,5 +369,31 @@ namespace AvalonInjectLib.UIFramework
             return false;
         }
 
+        protected override void OnClick(Vector2 mousePos)
+        {
+            base.OnClick(mousePos);
+
+            // Propagar el evento de mouse a todos los elementos visibles
+            foreach (var item in GetAllItems())
+            {
+                if (item.Visible)
+                {
+                    var itemAbsPos = item.GetAbsolutePosition();
+                    var itemRect = new Rect(itemAbsPos.X, itemAbsPos.Y, item.Width, item.Height);
+
+                    if (IsPointInRect(mousePos, itemRect))
+                    {
+                        item.Click?.Invoke(mousePos);
+                        break;
+                    }
+                }
+            }
+        }
+
+        private bool IsPointInRect(Vector2 point, Rect rect)
+        {
+            return point.X >= rect.X && point.X <= rect.X + rect.Width &&
+                   point.Y >= rect.Y && point.Y <= rect.Y + rect.Height;
+        }
     }
 }

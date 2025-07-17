@@ -7,6 +7,14 @@ namespace AvalonInjectLib
     public static class Structs
     {
         public delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+       
+        public enum CenteringMode
+        {
+            Visual,      // Centrado visual ajustado (recomendado)
+            Geometric,   // Centrado geométrico exacto
+            CapHeight    // Centrado basado en altura de mayúsculas
+        }
+
 
         [Flags]
         public enum MouseButtons

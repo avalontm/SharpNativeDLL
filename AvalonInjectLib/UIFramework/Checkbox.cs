@@ -1,6 +1,4 @@
 ﻿using static AvalonInjectLib.Structs;
-using System;
-using System.Transactions;
 
 namespace AvalonInjectLib.UIFramework
 {

@@ -225,6 +225,8 @@ namespace AvalonInjectLib.UIFramework
 
         private void UpdateDisplayLabel()
         {
+            if (_displayLabel == null) return;
+
             _displayLabel.X = TEXT_PADDING;
             _displayLabel.Y = 0;
             _displayLabel.Width = Math.Max(0, Width - (2 * TEXT_PADDING));

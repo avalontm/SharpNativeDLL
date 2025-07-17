@@ -3,18 +3,77 @@ using static AvalonInjectLib.Structs;
 
 namespace AvalonInjectLib.UIFramework
 {
+    // Clase TabPage mejorada con constructor adicional
     public class TabPage
     {
         public string Title { get; set; } = "";
-        public UIContainer Content { get; set; }
+        public UIContainer Content { get; internal set; }
         public bool Enabled { get; set; } = true;
         public bool Visible { get; set; } = true;
         public object? Tag { get; set; }
 
+        public TabPage(string title)
+        {
+            Title = title;
+            Content = new Panel();
+        }
+
+        // Constructor adicional para facilitar la creación con contenido
         public TabPage(string title, UIContainer content)
         {
             Title = title;
-            Content = content;
+            Content = content ?? new Panel();
+        }
+
+        public void AddChild(UIControl control)
+        {
+            Content.AddChild(control);
+        }
+    }
+
+    // Clase builder para facilitar la creación de tabs
+    public class TabBuilder
+    {
+        private readonly TabControl _tabControl;
+        private readonly TabPage _tabPage;
+
+        internal TabBuilder(TabControl tabControl, TabPage tabPage)
+        {
+            _tabControl = tabControl;
+            _tabPage = tabPage;
+        }
+
+        public TabBuilder AddControl<T>(T control) where T : UIControl
+        {
+            _tabPage.Content.AddChild(control);
+            return this;
+        }
+
+        public TabBuilder AddControls(params UIControl[] controls)
+        {
+            foreach (var control in controls)
+            {
+                control.Parent = _tabControl;
+                _tabPage.Content.AddChild(control);
+            }
+            return this;
+        }
+
+        public TabBuilder SetEnabled(bool enabled)
+        {
+            _tabPage.Enabled = enabled;
+            return this;
+        }
+
+        public TabBuilder SetTag(object tag)
+        {
+            _tabPage.Tag = tag;
+            return this;
+        }
+
+        public TabControl Build()
+        {
+            return _tabControl;
         }
     }
 
@@ -25,6 +84,8 @@ namespace AvalonInjectLib.UIFramework
         private const float TAB_PADDING = 10f;
         private const float TAB_SPACING = 2f;
         private const float BORDER_WIDTH = 1f;
+        private const float MIN_TAB_WIDTH = 80f;
+        private const float MAX_TAB_WIDTH = 200f;
 
         // Lista de tabs
         private readonly List<TabPage> _tabs = new List<TabPage>();
@@ -33,20 +94,30 @@ namespace AvalonInjectLib.UIFramework
         // Botones para los tabs
         private readonly List<Button> _tabButtons = new List<Button>();
 
+        // Propiedades para auto-ajuste
+        public bool AutoSize { get; set; } = true;
+        public bool AutoFitTabs { get; set; } = true;
+        public float MinTabWidth { get; set; } = MIN_TAB_WIDTH;
+        public float MaxTabWidth { get; set; } = MAX_TAB_WIDTH;
+
+        // NUEVA PROPIEDAD: Controla si el contenido se ajusta automáticamente
+        public bool StretchContent { get; set; } = true;
+
         // Colores para el tema dark profesional
-        public Color TabBackColor { get; set; } = Color.FromArgb(30, 30, 30);          // Fondo de la barra de tabs
-        public Color TabForeColor { get; set; } = Color.FromArgb(220, 220, 220);       // Texto de los tabs
-        public Color SelectedTabColor { get; set; } = Color.FromArgb(45, 45, 45);      // Tab seleccionado
-        public Color SelectedTabBorderColor { get; set; } = Color.FromArgb(0, 122, 204); // Borde inferior del tab seleccionado
-        public Color TabBorderColor { get; set; } = Color.FromArgb(60, 60, 60);        // Bordes generales
-        public Color ContentBackColor { get; set; } = Color.FromArgb(37, 37, 38);      // Fondo del área de contenido
-        public Color HoverTabColor { get; set; } = Color.FromArgb(50, 50, 50);         // Color al pasar el mouse
-        public Color DisabledTabColor { get; set; } = Color.FromArgb(30, 30, 30);      // Tabs deshabilitados
-        public Color DisabledTextColor { get; set; } = Color.FromArgb(100, 100, 100);  // Texto deshabilitado
+        public Color TabBackColor { get; set; } = Color.FromArgb(30, 30, 30);
+        public Color TabForeColor { get; set; } = Color.FromArgb(220, 220, 220);
+        public Color SelectedTabColor { get; set; } = Color.FromArgb(45, 45, 45);
+        public Color SelectedTabBorderColor { get; set; } = Color.FromArgb(0, 122, 204);
+        public Color TabBorderColor { get; set; } = Color.FromArgb(60, 60, 60);
+        public Color ContentBackColor { get; set; } = Color.FromArgb(37, 37, 38);
+        public Color HoverTabColor { get; set; } = Color.FromArgb(50, 50, 50);
+        public Color DisabledTabColor { get; set; } = Color.FromArgb(30, 30, 30);
+        public Color DisabledTextColor { get; set; } = Color.FromArgb(100, 100, 100);
 
         // Eventos
         public event Action<int>? TabSelected;
         public event Action<int>? TabClosing;
+        public event Action? TabsChanged;
 
         // Propiedades
         public int SelectedIndex
@@ -70,68 +141,212 @@ namespace AvalonInjectLib.UIFramework
             Height = 200f;
         }
 
-        // Métodos públicos para manejo de tabs
-        public void AddTab(TabPage tab)
-        {
-            if (tab == null) return;
+        // ============ MÉTODOS SIMPLIFICADOS PARA AGREGAR TABS ============
 
+        /// <summary>
+        /// Método más simple para agregar un tab con título
+        /// </summary>
+        public TabBuilder AddTab(string title)
+        {
+            var tab = new TabPage(title);
+            AddTabInternal(tab);
+            return new TabBuilder(this, tab);
+        }
+
+        /// <summary>
+        /// Método simple para agregar un tab con título y contenido
+        /// </summary>
+        public TabControl AddTab(string title, UIContainer content)
+        {
+            var tab = new TabPage(title, content);
+            AddTabInternal(tab);
+            return this;
+        }
+
+        /// <summary>
+        /// Método simple para agregar un tab con título y múltiples controles
+        /// </summary>
+        public TabControl AddTab(string title, params UIControl[] controls)
+        {
+            var tab = new TabPage(title);
+            foreach (var control in controls)
+            {
+                tab.Content.AddChild(control);
+            }
+            AddTabInternal(tab);
+            return this;
+        }
+
+        /// <summary>
+        /// Método tradicional para agregar un TabPage completo
+        /// </summary>
+        public TabControl AddTab(TabPage tab)
+        {
+            if (tab == null) return this;
+            AddTabInternal(tab);
+            return this;
+        }
+
+        /// <summary>
+        /// Método fluido para crear múltiples tabs fácilmente
+        /// </summary>
+        public TabControl CreateTabs(params (string title, UIContainer content)[] tabs)
+        {
+            foreach (var (title, content) in tabs)
+            {
+                AddTab(title, content);
+            }
+            return this;
+        }
+
+        /// <summary>
+        /// Método fluido para crear múltiples tabs con builder
+        /// </summary>
+        public TabControl CreateTabs(params string[] titles)
+        {
+            foreach (var title in titles)
+            {
+                AddTab(title);
+            }
+            return this;
+        }
+
+        // ============ MÉTODOS INTERNOS ============
+
+        private void AddTabInternal(TabPage tab)
+        {
             _tabs.Add(tab);
             CreateTabButton(tab, _tabs.Count - 1);
 
-            // Configurar el contenido del tab con stretch completo
+            // Configurar el contenido del tab
             if (tab.Content != null)
             {
                 tab.Content.Parent = this;
                 UpdateTabContentLayout(tab.Content);
-                tab.Content.Visible = (_tabs.Count == 1); // Mostrar solo si es el primer tab
+                tab.Content.Visible = (_tabs.Count == 1);
 
-                // Asegurarse de que todos los hijos del TabPage tengan el parent correcto
+                // Asegurar que todos los hijos tengan el parent correcto
                 foreach (var child in tab.Content.Children)
                 {
                     child.Parent = tab.Content;
                 }
             }
 
+            // Seleccionar el primer tab automáticamente
             if (_tabs.Count == 1)
             {
                 SetSelectedIndex(0);
             }
 
+            // Auto-ajustar el tamaño si está habilitado
+            if (AutoSize || AutoFitTabs)
+            {
+                AutoAdjustSize();
+            }
+
             RecalculateTabLayout();
+            TabsChanged?.Invoke();
         }
 
-        public void AddTab(string title, UIContainer content)
+        /// <summary>
+        /// Auto-ajusta el tamaño del TabControl basado en el contenido
+        /// </summary>
+        private void AutoAdjustSize()
         {
-            AddTab(new TabPage(title, content));
+            if (!AutoSize && !AutoFitTabs) return;
+
+            float totalTabWidth = 0;
+            float maxContentWidth = 0;
+            float maxContentHeight = 0;
+
+            // Calcular el ancho total necesario para los tabs
+            if (AutoFitTabs)
+            {
+                foreach (var tab in _tabs)
+                {
+                    // Estimar el ancho del texto + padding
+                    float textWidth = EstimateTextWidth(tab.Title) + (TAB_PADDING * 2);
+                    totalTabWidth += Math.Max(MinTabWidth, Math.Min(MaxTabWidth, textWidth));
+                }
+                totalTabWidth += (_tabs.Count - 1) * TAB_SPACING;
+            }
+
+            // Calcular el tamaño necesario basado en el contenido
+            if (AutoSize)
+            {
+                foreach (var tab in _tabs)
+                {
+                    if (tab.Content != null)
+                    {
+                        var contentSize = CalculateContentSize(tab.Content);
+                        maxContentWidth = Math.Max(maxContentWidth, contentSize.Width);
+                        maxContentHeight = Math.Max(maxContentHeight, contentSize.Height);
+                    }
+                }
+            }
+
+            // Ajustar el ancho para acomodar los tabs
+            if (AutoFitTabs)
+            {
+                Width = Math.Max(Width, totalTabWidth + (BORDER_WIDTH * 2));
+            }
+
+            // Ajustar el tamaño para acomodar el contenido
+            if (AutoSize)
+            {
+                Width = Math.Max(Width, maxContentWidth + (BORDER_WIDTH * 2));
+                Height = Math.Max(Height, maxContentHeight + TAB_HEIGHT + (BORDER_WIDTH * 2));
+            }
         }
 
-        public void RemoveTab(int index)
+        /// <summary>
+        /// Estima el ancho del texto (implementación simple)
+        /// </summary>
+        private float EstimateTextWidth(string text)
         {
-            if (index < 0 || index >= _tabs.Count) return;
+            // Implementación simple - en un caso real usarías las métricas del font
+            return text.Length * 8f; // Aproximadamente 8 pixels por caracter
+        }
+
+        /// <summary>
+        /// Calcula el tamaño necesario para el contenido
+        /// </summary>
+        private (float Width, float Height) CalculateContentSize(UIContainer container)
+        {
+            float maxX = 0, maxY = 0;
+
+            foreach (var child in container.Children)
+            {
+                maxX = Math.Max(maxX, child.X + child.Width);
+                maxY = Math.Max(maxY, child.Y + child.Height);
+            }
+
+            return (maxX, maxY);
+        }
+
+        // ============ MÉTODOS DE REMOCIÓN MEJORADOS ============
+
+        public TabControl RemoveTab(int index)
+        {
+            if (index < 0 || index >= _tabs.Count) return this;
 
             var tab = _tabs[index];
             var button = _tabButtons[index];
 
-            // Disparar evento de cierre
             TabClosing?.Invoke(index);
 
-            // Remover el contenido del contenedor
             if (tab.Content != null)
             {
                 RemoveChild(tab.Content);
             }
 
-            // Remover el botón
             RemoveChild(button);
-
-            // Remover de las listas
             _tabs.RemoveAt(index);
             _tabButtons.RemoveAt(index);
 
             // Ajustar índice seleccionado
             if (_selectedIndex == index)
             {
-                // Si se eliminó el tab seleccionado, seleccionar otro
                 if (_tabs.Count > 0)
                 {
                     int newIndex = Math.Min(index, _tabs.Count - 1);
@@ -147,36 +362,130 @@ namespace AvalonInjectLib.UIFramework
                 _selectedIndex--;
             }
 
+            // Auto-ajustar tamaño después de remover
+            if (AutoSize || AutoFitTabs)
+            {
+                AutoAdjustSize();
+            }
+
             RecalculateTabLayout();
+            TabsChanged?.Invoke();
+            return this;
         }
 
-        public void RemoveTab(TabPage tab)
+        public TabControl RemoveTab(TabPage tab)
         {
             int index = _tabs.IndexOf(tab);
             if (index >= 0)
             {
                 RemoveTab(index);
             }
+            return this;
         }
 
-        public void ClearTabs()
+        public TabControl RemoveTab(string title)
+        {
+            int index = _tabs.FindIndex(t => t.Title == title);
+            if (index >= 0)
+            {
+                RemoveTab(index);
+            }
+            return this;
+        }
+
+        public TabControl ClearTabs()
         {
             while (_tabs.Count > 0)
             {
                 RemoveTab(0);
             }
+            return this;
         }
 
-        // Método para actualizar el layout del contenido del tab (stretch)
+        // ============ MÉTODOS DE LAYOUT MEJORADOS ============
+
+        /// <summary>
+        /// MÉTODO MEJORADO: Actualiza el layout del contenido del tab con soporte para stretch
+        /// </summary>
         private void UpdateTabContentLayout(UIContainer content)
         {
-            content.X = BORDER_WIDTH;
-            content.Y = TAB_HEIGHT + BORDER_WIDTH;
-            content.Width = Width - (2 * BORDER_WIDTH);
-            content.Height = Height - TAB_HEIGHT - (2 * BORDER_WIDTH);
+            if (content == null) return;
+
+            // Calcular el área disponible para el contenido
+            var contentArea = GetContentArea();
+
+            // Aplicar la posición y tamaño del contenedor
+            content.X = contentArea.X;
+            content.Y = contentArea.Y;
+
+            if (StretchContent)
+            {
+                // Hacer que el contenido se ajuste completamente al área disponible
+                content.Width = contentArea.Width;
+                content.Height = contentArea.Height;
+            }
+            else
+            {
+                // Mantener el tamaño original del contenido (comportamiento anterior)
+                content.Width = Math.Min(content.Width, contentArea.Width);
+                content.Height = Math.Min(content.Height, contentArea.Height);
+            }
+
+            // NUEVO: Aplicar stretch a los controles hijos si están configurados para ello
+            ApplyStretchToChildren(content, contentArea);
         }
 
-        // Métodos privados
+        /// <summary>
+        /// NUEVO MÉTODO: Aplica stretch a los controles hijos del contenedor
+        /// </summary>
+        private void ApplyStretchToChildren(UIContainer container, Rect contentArea)
+        {
+            if (!StretchContent) return;
+
+            foreach (var child in container.Children)
+            {
+                // Aplicar stretch horizontal para controles que ocupan todo el ancho
+                if (child is Panel panel)
+                {
+                    // Los paneles se ajustan al ancho disponible
+                    if (panel.Width >= container.Width * 0.9f) // Si el panel ocupa casi todo el ancho
+                    {
+                        panel.Width = container.Width - 20; // Dejar un margen de 10px a cada lado
+                    }
+                }
+                else if (child is Button button)
+                {
+                    // Los botones que ocupan todo el ancho se ajustan
+                    if (button.Width >= container.Width * 0.9f)
+                    {
+                        button.Width = container.Width - 20;
+                    }
+                }
+                else if (child is TextBox textBox)
+                {
+                    // Los textboxes que ocupan todo el ancho se ajustan
+                    if (textBox.Width >= container.Width * 0.9f)
+                    {
+                        textBox.Width = container.Width - 20;
+                    }
+                }
+                else if (child is Slider slider)
+                {
+                    // Los sliders que ocupan todo el ancho se ajustan
+                    if (slider.Width >= container.Width * 0.9f)
+                    {
+                        slider.Width = container.Width - 20;
+                    }
+                }
+
+                // Aplicar recursivamente a contenedores hijos
+                if (child is UIContainer childContainer)
+                {
+                    ApplyStretchToChildren(childContainer, contentArea);
+                }
+            }
+        }
+
         private void CreateTabButton(TabPage tab, int index)
         {
             var button = new Button
@@ -184,14 +493,14 @@ namespace AvalonInjectLib.UIFramework
                 Text = tab.Title,
                 Height = TAB_HEIGHT,
                 BackColor = (index == _selectedIndex) ? SelectedTabColor : TabBackColor,
-                TextColor = tab.Enabled ? TabForeColor : DisabledTextColor,
+                ForeColor = tab.Enabled ? TabForeColor : DisabledTextColor,
                 ShowBorder = false,
                 Parent = this,
                 Tag = index,
                 Enabled = tab.Enabled
             };
 
-            // CORREGIDO: Efecto hover mejorado con colores del tema
+            // Efecto hover
             if (tab.Enabled)
             {
                 button.MouseEnter += (pos) => {
@@ -218,14 +527,12 @@ namespace AvalonInjectLib.UIFramework
 
         private void SetSelectedIndex(int index)
         {
-            // Validación robusta del índice
             if (index < -1 || index >= _tabs.Count)
             {
                 throw new ArgumentOutOfRangeException(nameof(index),
                     $"Index {index} is out of range. Valid range is -1 to {_tabs.Count - 1}");
             }
 
-            // Si no hay tabs o índice es -1, deseleccionar todo
             if (_tabs.Count == 0 || index == -1)
             {
                 if (_selectedIndex != -1)
@@ -236,7 +543,6 @@ namespace AvalonInjectLib.UIFramework
                 return;
             }
 
-            // Si es el mismo índice, no hacer nada
             if (index == _selectedIndex)
             {
                 return;
@@ -244,24 +550,20 @@ namespace AvalonInjectLib.UIFramework
 
             try
             {
-                // Deseleccionar el tab actual si existe
                 if (_selectedIndex >= 0 && _selectedIndex < _tabs.Count)
                 {
                     DeselectCurrentTab();
                 }
 
-                // Seleccionar el nuevo tab
                 _selectedIndex = index;
                 SelectNewTab();
 
-                // Disparar evento
                 TabSelected?.Invoke(index);
             }
             catch (Exception ex)
             {
-                // Manejar cualquier error inesperado
                 Debug.WriteLine($"Error changing tab selection: {ex.Message}");
-                _selectedIndex = -1; // Reset a estado seguro
+                _selectedIndex = -1;
             }
         }
 
@@ -270,16 +572,14 @@ namespace AvalonInjectLib.UIFramework
             var oldTab = _tabs[_selectedIndex];
             var oldButton = _tabButtons[_selectedIndex];
 
-            // Ocultar contenido
             if (oldTab.Content != null)
             {
                 oldTab.Content.Visible = false;
                 SetChildrenVisibility(oldTab.Content, false);
             }
 
-            // CORREGIDO: Restaurar apariencia del botón con colores del tema
             oldButton.BackColor = oldTab.Enabled ? TabBackColor : DisabledTabColor;
-            oldButton.ForeColor = oldTab.Enabled ? TabForeColor : DisabledTextColor; // CORREGIDO: Usar ForeColor
+            oldButton.ForeColor = oldTab.Enabled ? TabForeColor : DisabledTextColor;
         }
 
         private void SelectNewTab()
@@ -287,16 +587,17 @@ namespace AvalonInjectLib.UIFramework
             var newTab = _tabs[_selectedIndex];
             var newButton = _tabButtons[_selectedIndex];
 
-            // Mostrar contenido
             if (newTab.Content != null)
             {
                 newTab.Content.Visible = true;
                 SetChildrenVisibility(newTab.Content, true);
+
+                // IMPORTANTE: Actualizar el layout cuando se selecciona un tab
+                UpdateTabContentLayout(newTab.Content);
             }
 
-            // CORREGIDO: Resaltar botón seleccionado con colores del tema
             newButton.BackColor = SelectedTabColor;
-            newButton.ForeColor = TabForeColor; // CORREGIDO: Usar ForeColor
+            newButton.ForeColor = TabForeColor;
         }
 
         private void SetChildrenVisibility(UIContainer container, bool visible)
@@ -313,54 +614,89 @@ namespace AvalonInjectLib.UIFramework
 
         private void RecalculateTabLayout()
         {
+            if (_tabButtons.Count == 0) return;
+
             float currentX = 0;
-            float tabWidth = CalculateTabWidth();
+            float totalAvailableWidth = Width;
 
-            for (int i = 0; i < _tabButtons.Count; i++)
+            if (AutoFitTabs)
             {
-                var button = _tabButtons[i];
-                button.X = currentX;
-                button.Y = 0;
-                button.Width = tabWidth;
+                // Calcular anchos individuales basados en el contenido
+                var tabWidths = new float[_tabButtons.Count];
+                float totalDesiredWidth = 0;
 
-                currentX += tabWidth + TAB_SPACING;
+                for (int i = 0; i < _tabButtons.Count; i++)
+                {
+                    float textWidth = EstimateTextWidth(_tabs[i].Title) + (TAB_PADDING * 2);
+                    tabWidths[i] = Math.Max(MinTabWidth, Math.Min(MaxTabWidth, textWidth));
+                    totalDesiredWidth += tabWidths[i];
+                }
+
+                totalDesiredWidth += (_tabButtons.Count - 1) * TAB_SPACING;
+
+                // Si no caben, escalar proporcionalmente
+                if (totalDesiredWidth > totalAvailableWidth)
+                {
+                    float scale = (totalAvailableWidth - (_tabButtons.Count - 1) * TAB_SPACING) / (totalDesiredWidth - (_tabButtons.Count - 1) * TAB_SPACING);
+                    for (int i = 0; i < tabWidths.Length; i++)
+                    {
+                        tabWidths[i] *= scale;
+                    }
+                }
+
+                // Aplicar los anchos calculados
+                for (int i = 0; i < _tabButtons.Count; i++)
+                {
+                    var button = _tabButtons[i];
+                    button.X = currentX;
+                    button.Y = 0;
+                    button.Width = tabWidths[i];
+                    currentX += tabWidths[i] + TAB_SPACING;
+                }
+            }
+            else
+            {
+                // Distribución uniforme (comportamiento original)
+                float tabWidth = (totalAvailableWidth - (_tabButtons.Count - 1) * TAB_SPACING) / _tabButtons.Count;
+
+                for (int i = 0; i < _tabButtons.Count; i++)
+                {
+                    var button = _tabButtons[i];
+                    button.X = currentX;
+                    button.Y = 0;
+                    button.Width = tabWidth;
+                    currentX += tabWidth + TAB_SPACING;
+                }
             }
         }
 
-        private float CalculateTabWidth()
-        {
-            if (_tabButtons.Count == 0) return 0;
+        // ============ MÉTODOS DE DIBUJO Y ACTUALIZACIÓN ============
 
-            float availableWidth = Width - ((_tabButtons.Count - 1) * TAB_SPACING);
-            return availableWidth / _tabButtons.Count;
-        }
-
-        // Override de métodos base
         public override void Draw()
         {
             if (!Visible) return;
 
             var absPos = GetAbsolutePosition();
 
-            // 1. Dibujar el fondo principal del TabControl
+            // Dibujar fondo principal
             Renderer.DrawRect(new Rect(absPos.X, absPos.Y, Width, Height), ContentBackColor);
 
-            // 2. Dibujar la barra de pestañas con un degradado oscuro
+            // Dibujar barra de tabs
             Renderer.DrawRect(new Rect(absPos.X, absPos.Y, Width, TAB_HEIGHT), TabBackColor);
 
-            // 3. Dibujar línea separadora inferior de la barra de tabs
+            // Línea separadora
             Renderer.DrawLine(
                 new Vector2(absPos.X, absPos.Y + TAB_HEIGHT),
                 new Vector2(absPos.X + Width, absPos.Y + TAB_HEIGHT),
                 BORDER_WIDTH,
                 Color.FromArgb(60, 60, 60));
 
-            // 4. Dibujar los botones de las pestañas
+            // Dibujar botones de tabs
             foreach (var button in _tabButtons)
             {
                 button.Draw();
 
-                // Dibujar borde inferior para el tab seleccionado
+                // Borde inferior para tab seleccionado
                 if ((int)button.Tag == _selectedIndex)
                 {
                     Renderer.DrawLine(
@@ -371,30 +707,20 @@ namespace AvalonInjectLib.UIFramework
                 }
             }
 
-            // 5. Dibujar bordes laterales y superior del control
+            // Bordes del control
             Renderer.DrawRectOutline(new Rect(absPos.X, absPos.Y, Width, Height), TabBorderColor, BORDER_WIDTH);
 
-            // 6. Dibujar el contenido del TabPage seleccionado y sus hijos
+            // Contenido del tab seleccionado
             if (SelectedTab?.Content != null && SelectedTab.Content.Visible)
             {
-                var contentRect = new Rect(
-                    absPos.X + BORDER_WIDTH,
-                    absPos.Y + TAB_HEIGHT + BORDER_WIDTH,
-                    Width - (2 * BORDER_WIDTH),
-                    Height - TAB_HEIGHT - (2 * BORDER_WIDTH)
-                );
-
-                // Dibujar el TabPage y todos sus hijos recursivamente
                 DrawTabPageContent(SelectedTab.Content);
             }
         }
 
         private void DrawTabPageContent(UIContainer container)
         {
-            // Dibujar este contenedor primero
             container.Draw();
 
-            // Luego dibujar todos sus hijos recursivamente
             foreach (var child in container.Children)
             {
                 if (child is UIContainer childContainer)
@@ -412,13 +738,11 @@ namespace AvalonInjectLib.UIFramework
         {
             if (!Visible || !Enabled) return;
 
-            // Actualizar los botones de las pestañas
             foreach (var button in _tabButtons)
             {
                 button.Update();
             }
 
-            // Actualizar el contenido del TabPage seleccionado y sus hijos
             if (SelectedTab?.Content != null && SelectedTab.Content.Visible)
             {
                 UpdateTabPageContent(SelectedTab.Content);
@@ -427,10 +751,8 @@ namespace AvalonInjectLib.UIFramework
 
         private void UpdateTabPageContent(UIContainer container)
         {
-            // Actualizar este contenedor primero
             container.Update();
 
-            // Luego actualizar todos sus hijos recursivamente
             foreach (var child in container.Children)
             {
                 if (child is UIContainer childContainer)
@@ -447,11 +769,9 @@ namespace AvalonInjectLib.UIFramework
         protected override void OnSizeChanged()
         {
             base.OnSizeChanged();
-
-            // Recalcular layout cuando cambia el tamaño
             RecalculateTabLayout();
 
-            // CORREGIDO: Ajustar tamaño del contenido de todos los tabs para mantener stretch
+            // IMPORTANTE: Actualizar el layout de todos los tabs cuando cambie el tamaño
             foreach (var tab in _tabs)
             {
                 if (tab.Content != null)
@@ -461,7 +781,8 @@ namespace AvalonInjectLib.UIFramework
             }
         }
 
-        // Método para obtener el área de contenido disponible
+        // ============ MÉTODOS DE UTILIDAD ============
+
         public Rect GetContentArea()
         {
             return new Rect(
@@ -472,18 +793,22 @@ namespace AvalonInjectLib.UIFramework
             );
         }
 
-        // Método para cambiar el título de un tab
-        public void SetTabTitle(int index, string title)
+        public TabControl SetTabTitle(int index, string title)
         {
             if (index >= 0 && index < _tabs.Count)
             {
                 _tabs[index].Title = title;
                 _tabButtons[index].Text = title;
+
+                if (AutoFitTabs)
+                {
+                    RecalculateTabLayout();
+                }
             }
+            return this;
         }
 
-        // CORREGIDO: Método para habilitar/deshabilitar un tab con colores del tema
-        public void SetTabEnabled(int index, bool enabled)
+        public TabControl SetTabEnabled(int index, bool enabled)
         {
             if (index >= 0 && index < _tabs.Count)
             {
@@ -492,7 +817,6 @@ namespace AvalonInjectLib.UIFramework
 
                 if (index == _selectedIndex && !enabled)
                 {
-                    // Si deshabilitamos el tab seleccionado, buscar el siguiente habilitado
                     for (int i = 0; i < _tabs.Count; i++)
                     {
                         if (_tabs[i].Enabled)
@@ -503,13 +827,69 @@ namespace AvalonInjectLib.UIFramework
                     }
                 }
 
-                // CORREGIDO: Actualizar colores visuales usando ForeColor y colores del tema
                 if (index != _selectedIndex)
                 {
                     _tabButtons[index].BackColor = enabled ? TabBackColor : DisabledTabColor;
                     _tabButtons[index].ForeColor = enabled ? TabForeColor : DisabledTextColor;
                 }
             }
+            return this;
+        }
+
+        // Método para encontrar tab por título
+        public int FindTabIndex(string title)
+        {
+            return _tabs.FindIndex(t => t.Title == title);
+        }
+
+        // Método para seleccionar tab por título
+        public TabControl SelectTab(string title)
+        {
+            int index = FindTabIndex(title);
+            if (index >= 0)
+            {
+                SetSelectedIndex(index);
+            }
+            return this;
+        }
+
+        // ============ NUEVOS MÉTODOS PARA CONTROLAR EL STRETCH ============
+
+        /// <summary>
+        /// Habilita o deshabilita el stretch del contenido
+        /// </summary>
+        public TabControl SetStretchContent(bool stretch)
+        {
+            StretchContent = stretch;
+
+            // Actualizar todos los tabs existentes
+            foreach (var tab in _tabs)
+            {
+                if (tab.Content != null)
+                {
+                    UpdateTabContentLayout(tab.Content);
+                }
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Fuerza una actualización del layout de todos los tabs
+        /// </summary>
+        public TabControl RefreshLayout()
+        {
+            RecalculateTabLayout();
+
+            foreach (var tab in _tabs)
+            {
+                if (tab.Content != null)
+                {
+                    UpdateTabContentLayout(tab.Content);
+                }
+            }
+
+            return this;
         }
     }
 }
