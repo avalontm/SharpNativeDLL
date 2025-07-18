@@ -23,7 +23,7 @@ namespace AvalonInjectLib.UIFramework
     {
         // Constantes para el diseño
         private const float ARROW_SIZE = 16f;
-        private const float ITEM_HEIGHT = 20f;
+        private const float ITEM_HEIGHT = 30f;
         private const int MAX_VISIBLE_ITEMS = 5;
         private const float SCROLL_BAR_WIDTH = 10f;
 
@@ -79,7 +79,7 @@ namespace AvalonInjectLib.UIFramework
         public ComboBox()
         {
             Width = 150f;
-            Height = 25f;
+            Height = 32f;
             BackColor = Color.FromArgb(37, 37, 38);
             ForeColor = Color.White;
             IsFocusable = true;
@@ -134,15 +134,15 @@ namespace AvalonInjectLib.UIFramework
             _scrollOffset = Math.Max(0, Math.Min(_scrollOffset, Math.Max(0, _items.Count - MAX_VISIBLE_ITEMS)));
         }
 
-        protected override void OnMouseLeave(Vector2 mousePos)
+        protected override void OnMouseLeave(object sender, Vector2 pos)
         {
-            base.OnMouseLeave(mousePos);
+            base.OnMouseLeave(sender, pos);
         }
 
-        protected override void OnClick(Vector2 mousePos)
+        protected override void OnClick(object sender, Vector2 pos)
         {
-            base.OnClick(mousePos);
-
+            base.OnClick(sender, pos);
+            var mousePos = UIEventSystem.MousePosition;
             if (_isExpanded)
             {
                 var absPos = GetAbsolutePosition();
@@ -165,9 +165,10 @@ namespace AvalonInjectLib.UIFramework
             }
         }
 
-        protected override void OnMouseDown(Vector2 mousePos)
+        protected override void OnMouseDown(object sender, Vector2 pos)
         {
-            base.OnMouseDown(mousePos);
+            base.OnMouseDown(sender, pos);
+            var mousePos = UIEventSystem.MousePosition;
             if (_isExpanded)
             {
                 if (IsMouseOverScrollBar(mousePos))

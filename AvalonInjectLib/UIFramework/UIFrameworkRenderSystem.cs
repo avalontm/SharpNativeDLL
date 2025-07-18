@@ -2,7 +2,7 @@
 {
     public interface UIFrameworkRenderSystem
     {
-        void Initialize(uint processId);
+        void Initialize();
         void Render();
         void Shutdown();
     }

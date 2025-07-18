@@ -75,12 +75,12 @@ namespace AvalonInjectLib.UIFramework
         public bool IsFocusable { get; internal set; } = false;
 
         // Eventos
-        public Action<Vector2>? Click;
-        public Action<Vector2>? MouseDown;
-        public Action<Vector2>? MouseUp;
-        public Action<Vector2>? MouseMove;
-        public Action<Vector2>? MouseEnter;
-        public Action<Vector2>? MouseLeave;
+        public Action<object, Vector2>? Click;
+        public Action<object, Vector2>? MouseDown;
+        public Action<object, Vector2>? MouseUp;
+        public Action<object, Vector2>? MouseMove;
+        public Action<object, Vector2>? MouseEnter;
+        public Action<object, Vector2>? MouseLeave;
         public Action<char>? KeyPress;
 
         private bool _isHovered;
@@ -101,8 +101,8 @@ namespace AvalonInjectLib.UIFramework
             // SIEMPRE ejecutar MouseMove cuando el mouse está sobre el control
             if (isMouseOver)
             {
-                OnMouseMove(mousePos);
-                MouseMove?.Invoke(mousePos);
+                OnMouseMove(this, mousePos);
+                MouseMove?.Invoke(this, mousePos);
             }
 
             // Manejar estado hover
@@ -111,8 +111,8 @@ namespace AvalonInjectLib.UIFramework
                 if (!_isHovered)
                 {
                     _isHovered = true;
-                    OnMouseEnter(mousePos);
-                    MouseEnter?.Invoke(mousePos);
+                    OnMouseEnter(this, mousePos);
+                    MouseEnter?.Invoke(this, mousePos);
                 }
             }
             else
@@ -120,8 +120,8 @@ namespace AvalonInjectLib.UIFramework
                 if (_isHovered)
                 {
                     _isHovered = false;
-                    OnMouseLeave(mousePos);
-                    MouseLeave?.Invoke(mousePos);
+                    OnMouseLeave(this, mousePos);
+                    MouseLeave?.Invoke(this, mousePos);
                 }
             }
 
@@ -130,8 +130,8 @@ namespace AvalonInjectLib.UIFramework
             {
                 // Click iniciado en este control
                 _isPressed = true;
-                OnMouseDown(mousePos);
-                MouseDown?.Invoke(mousePos);
+                OnMouseDown(this, mousePos);
+                MouseDown?.Invoke(this, mousePos);
             }
             // Manejar MouseUp - CORREGIDO: ejecutar siempre que se suelte el mouse si estaba presionado
             else if (!UIEventSystem.IsMousePressed && _isPressed)
@@ -143,14 +143,14 @@ namespace AvalonInjectLib.UIFramework
                 _isPressed = false;
                
                 // SIEMPRE ejecutar MouseUp cuando se suelta el mouse
-                OnMouseUp(mousePos);
-                MouseUp?.Invoke(mousePos);
+                OnMouseUp(this, mousePos);
+                MouseUp?.Invoke(this, mousePos);
 
                 // Solo ejecutar Click si es un click válido
                 if (isValidClick)
                 {
-                    OnClick(mousePos);
-                    Click?.Invoke(mousePos);
+                    OnClick(this, mousePos);
+                    Click?.Invoke(this, mousePos);
                 }
 
                 UIFrameworkSystem.ClearFocusControls();
@@ -167,23 +167,13 @@ namespace AvalonInjectLib.UIFramework
         public abstract void Draw();
 
         // Manejo de eventos protegidos
-        protected virtual void OnClick(Vector2 mousePos) { }
-        protected virtual void OnMouseMove(Vector2 mousePos) { }
-        protected virtual void OnMouseDown(Vector2 mousePos) { }
-        protected virtual void OnMouseUp(Vector2 mousePos) { }
+        protected virtual void OnClick(object sender, Vector2 pos) { }
+        protected virtual void OnMouseMove(object sender, Vector2 pos) { }
+        protected virtual void OnMouseDown(object sender, Vector2 pos) { }
+        protected virtual void OnMouseUp(object sender, Vector2 pos) { }
         protected virtual void OnKeyPress(char key) { }
-        protected virtual void OnMouseEnter(Vector2 mousePos) { }
-        protected virtual void OnMouseLeave(Vector2 mousePos) { }
-
-        /// <summary>
-        /// Método público para simular un evento MouseMove en el control
-        /// </summary>
-        /// <param name="mousePos">Posición del mouse</param>
-        public void SimulateMouseMove(Vector2 mousePos)
-        {
-            OnMouseMove(mousePos);
-            MouseMove?.Invoke(mousePos);
-        }
+        protected virtual void OnMouseEnter(object sender, Vector2 pos) { }
+        protected virtual void OnMouseLeave(object sender, Vector2 pos) { }
 
         // Manejo de foco - MODIFICADO
         public virtual void Focus()
@@ -193,7 +183,7 @@ namespace AvalonInjectLib.UIFramework
                 Vector2 mousePos = UIEventSystem.MousePosition;
                 HasFocus = true;
                 UIFrameworkSystem.SetFocus(this);
-                MouseEnter?.Invoke(mousePos);
+                MouseEnter?.Invoke(this, mousePos);
             }
         }
 

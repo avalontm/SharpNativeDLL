@@ -7,7 +7,7 @@ namespace AvalonInjectLib.UIFramework
     {
         // Constantes para el botón
         private const float DEFAULT_WIDTH = 100f;
-        private const float DEFAULT_HEIGHT = 30f;
+        private const float DEFAULT_HEIGHT = 32f;
         private const float TEXT_PADDING = 5f;
         private const float HOVER_ALPHA = 0.7f; // 70% de opacidad en hover
         private const float PRESSED_ALPHA = 0.5f; // 50% de opacidad al presionar
@@ -144,27 +144,28 @@ namespace AvalonInjectLib.UIFramework
         }
 
         // Manejo de eventos de mouse
-        protected override void OnMouseEnter(Vector2 mousePos)
+        protected override void OnMouseEnter(object sender, Vector2 pos)
         {
-            base.OnMouseEnter(mousePos);
+            base.OnMouseEnter(sender, pos);
+
             if (Enabled)
             {
                 IsHovered = true;
             }
         }
 
-        protected override void OnMouseLeave(Vector2 mousePos)
+        protected override void OnMouseLeave(object sender, Vector2 pos)
         {
-            base.OnMouseLeave(mousePos);
+            base.OnMouseLeave(sender, pos);
             if (Enabled && !IsPressed)
             {
                 IsHovered = false;
             }
         }
 
-        protected override void OnClick(Vector2 mousePos)
+        protected override void OnClick(object sender, Vector2 pos)
         {
-            base.OnClick(mousePos);
+            base.OnClick(sender, pos);
         }
     }
 }

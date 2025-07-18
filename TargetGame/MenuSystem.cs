@@ -1,341 +1,310 @@
 ﻿using AvalonInjectLib;
+using AvalonInjectLib.Scripting;
 using AvalonInjectLib.UIFramework;
-using static AvalonInjectLib.Structs;
+using System.Globalization;
 
 namespace TargetGame
 {
     public class MenuSystem : UIFrameworkRenderSystem
     {
-        // Constantes de memoria
-        const int PLAYER_MOVE_TO = 0xA51220;
-        const int PLAYER_SCORE = 0xEFFE54;
-        const int PLAYER_HEALTH = 0xEFFF00;
-        const int PLAYER_LEVEL = 0xFAFE70;
-        const int PLAYER_NAME = 0x001F008;
-
-        // Proceso y estado
-        public ProcessEntry Process { get; set; }
         private bool _isInitialized = false;
-        private bool _isOrcWalking = false;
+        private MenuList _mainMenu;
+        private Dictionary<string, MenuItem> _categoryItems = new Dictionary<string, MenuItem>();
+        private Dictionary<string, MenuList> _activeSubmenus = new Dictionary<string, MenuList>();
+        private HashSet<string> _processedScripts = new HashSet<string>(); // Para evitar duplicados
 
-        // UI Elements
-        public Window MainWindow { get; private set; }
-        private TabControl _tabControl;
-        private Label _statusLabel;
+        // Configuración de diseño
+        private const float MaxMenuHeight = 500f;
+        private const float MenuWidth = 250f;
+        private const float SubmenuWidth = 220f;
+        private const float MenuPadding = 5f;
 
-        // Player Info Controls
-        private Slider _scoreSlider;
-        private Slider _healthSlider;
-        private Slider _levelSlider;
-        private TextBox _playerNameTextBox;
-        private Button _applyButton;
-
-        // OrcWalk Controls
-        private TextBox _walkPointsTextBox;
-        private Button _orcWalkButton;
-        private float _walkSpeed = 1.0f;
-        private List<Vector2> _walkPoints = new List<Vector2>();
-        private int _currentWalkPoint = 0;
-        private DateTime _lastWalkTime;
-
-        public void Initialize(uint processId)
+        public void Initialize()
         {
             if (_isInitialized) return;
 
+            // Inicializar dependencias
             Font.Initialize();
-            InputSystem.Initialize(processId);
-            CreateUI();
+            InputSystem.Initialize(AvalonEngine.Instance.Process.ProcessId);
+
+            // Crear menú principal
+            CreateMainMenu();
+            LoadScripts();
+
             _isInitialized = true;
         }
 
-        private void CreateUI()
+        private void CreateMainMenu()
         {
-            // Configurar ventana principal
-            MainWindow = new Window
+            _mainMenu = new MenuList
             {
-                Title = "Game Controller",
-                Width = 600,
-                Height = 500,
-                BackColor = new Color(30, 30, 30)
+                X = MenuPadding,
+                Y = MenuPadding,
+                Width = MenuWidth,
+                Height = 200f, // Se ajustará automáticamente
+                HeaderText = "Avalon[HUB]",
+                Visible = true
             };
 
-            // Crear TabControl
-            _tabControl = new TabControl
-            {
-                Width = 580,
-                Height = 430
-            };
-
-            // Añadir pestañas
-            CreatePlayerInfoTab();
-            CreateOrcWalkTab();
-
-            // Status label
-            _statusLabel = new Label
-            {
-                Y = 440,
-                Width = 580,
-                Height = 20,
-                ForeColor = Color.FromArgb(200, 200, 200)
-            };
-
-            // Añadir elementos a la ventana
-            MainWindow.Content = _tabControl;
-
-            // Configurar eventos
-            SetupEvents();
- 
         }
 
-        private void CreatePlayerInfoTab()
+        private void LoadScripts()
         {
-            var playerTab = new TabPage("Player Info");
-            int yPos = 10;
-            int panelHeight = 60; // Reducido ya que no necesitamos espacio para el label extra
-            int spacing = 10;
+            _mainMenu.ClearItems();
+            _categoryItems.Clear();
+            _processedScripts.Clear();
 
-            // Score Control
-            _scoreSlider = CreateSlider(10, yPos, "Score", Color.FromArgb(255, 215, 0), 0, 999999);
-            playerTab.AddChild(_scoreSlider);
-            yPos += panelHeight + spacing;
+            // Obtener todos los scripts y procesarlos
+            var allScripts = MoonSharpScriptLoader.Scripts;
 
-            // Health Control
-            _healthSlider = CreateSlider(10, yPos, "Health", Color.FromArgb(255, 100, 100), 1, 9999);
-            playerTab.AddChild(_healthSlider);
-            yPos += panelHeight + spacing;
-
-            // Level Control
-            _levelSlider = CreateSlider(10, yPos, "Level", Color.FromArgb(100, 149, 237), 1, 18);
-            playerTab.AddChild(_levelSlider);
-            yPos += panelHeight + spacing;
-
-            // Name Control
-            var namePanel = new Panel
+            // Primero crear todas las categorías basadas en la estructura de carpetas
+            var uniqueCategories = new HashSet<string>();
+            foreach (var script in allScripts)
             {
-                X = 10,
-                Y = yPos,
-                Width = 560,
-                Height = 80
-            };
-
-            namePanel.AddChild(new Label
-            {
-                Text = "Player Name:",
-                ForeColor = Color.FromArgb(144, 238, 144),
-                Width = 200,
-                Y = 10
-            });
-
-            _playerNameTextBox = new TextBox
-            {
-                Y = 40,
-                Width = 300,
-                Height = 30,
-                Text = "Player"
-            };
-            namePanel.AddChild(_playerNameTextBox);
-            playerTab.AddChild(namePanel);
-            yPos += 90;
-
-            // Apply Button
-            _applyButton = new Button
-            {
-                Y = yPos,
-                Width = 560,
-                Height = 40,
-                Text = "Apply Changes",
-                BackColor = Color.FromArgb(0, 180, 0)
-            };
-            playerTab.AddChild(_applyButton);
-
-            _tabControl.AddTab(playerTab);
-        }
-
-        private void CreateOrcWalkTab()
-        {
-            var orcWalkTab = new TabPage("OrcWalk");
-            int yPos = 10;
-            int panelHeight = 60;
-            int spacing = 15;
-
-            // Walk Points Configuration
-            var walkPointsPanel = new Panel
-            {
-                X = 10,
-                Y = yPos,
-                Width = 560,
-                Height = 120
-            };
-
-            walkPointsPanel.AddChild(new Label
-            {
-                Text = "Path Points (x1,y1;x2,y2;...):",
-                ForeColor = Color.FromArgb(200, 100, 200),
-                Width = 300,
-                Y = 10
-            });
-
-            _walkPointsTextBox = new TextBox
-            {
-                Text = "-0.5,0.5;0.5,0.5;0.5,-0.5",
-                Y = 40,
-                Width = 560,
-                Height = 30,
-                PlaceholderText = "Example: -0.5,0.5;0.5,0.5;0.5,-0.5"
-            };
-            walkPointsPanel.AddChild(_walkPointsTextBox);
-            orcWalkTab.AddChild(walkPointsPanel);
-            yPos += 130;
-
-            // Walk Speed Control
-            var speedSlider = CreateSlider(10, yPos, "Walk Speed", Color.FromArgb(150, 150, 255), 0.1f, 5.0f);
-            orcWalkTab.AddChild(speedSlider);
-            yPos += panelHeight + spacing;
-
-            // OrcWalk Button
-            _orcWalkButton = new Button
-            {
-                Y = yPos,
-                Width = 560,
-                Height = 40,
-                Text = "Start OrcWalk",
-                BackColor = Color.FromArgb(70, 70, 150)
-            };
-            orcWalkTab.AddChild(_orcWalkButton);
-
-            _tabControl.AddTab(orcWalkTab);
-        }
-
-        private Slider CreateSlider(int x, int y, string title, Color color, float minValue, float maxValue)
-        {
-            return new Slider
-            {
-                X = x,
-                Y = y,
-                Width = 560,
-                Height = 50, // Altura un poco mayor para mejor manipulación
-                Text = title,
-                MinValue = minValue,
-                MaxValue = maxValue,
-                FillColor = color,
-                IsIntegerValue = (title != "Walk Speed")
-            };
-        }
-
-        private void SetupEvents()
-        {
-            _applyButton.Click += ApplyPlayerChanges;
-            _orcWalkButton.Click += ToggleOrcWalk;
-        }
-
-        private void ApplyPlayerChanges(Vector2 pos)
-        {
-            // Actualizar valores en el juego
-            if (Process != null)
-            {
-                Process.Write(PLAYER_SCORE, (int)_scoreSlider.Value);
-                Process.Write(PLAYER_HEALTH, _healthSlider.Value);
-                Process.Write(PLAYER_LEVEL, (int)_levelSlider.Value);
-                Process.WriteString(PLAYER_NAME, _playerNameTextBox.Text);
-            }
-
-            ShowStatusMessage("Player changes applied successfully!", Color.FromArgb(0, 255, 0));
-        }
-
-        private void ToggleOrcWalk(Vector2 pos)
-        {
-            _isOrcWalking = !_isOrcWalking;
-
-            if (_isOrcWalking)
-            {
-                ParseWalkPoints();
-                if (_walkPoints.Count == 0)
+                string category = GetCategoryFromScript(script);
+                if (!string.IsNullOrEmpty(category))
                 {
-                    ShowStatusMessage("No valid walk points defined!", Color.FromArgb(255, 100, 100));
-                    _isOrcWalking = false;
-                    return;
-                }
-
-                _currentWalkPoint = 0;
-                _lastWalkTime = DateTime.Now;
-                _orcWalkButton.Text = "Stop OrcWalk";
-                _orcWalkButton.BackColor = Color.FromArgb(150, 70, 70);
-                ShowStatusMessage("OrcWalk started!", Color.FromArgb(0, 255, 0));
-            }
-            else
-            {
-                _orcWalkButton.Text = "Start OrcWalk";
-                _orcWalkButton.BackColor = Color.FromArgb(70, 70, 150);
-                ShowStatusMessage("OrcWalk stopped!", Color.FromArgb(200, 200, 200));
-            }
-        }
-
-        private void ParseWalkPoints()
-        {
-            _walkPoints.Clear();
-            var pointStrings = _walkPointsTextBox.Text.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
-
-            foreach (var pointStr in pointStrings)
-            {
-                var coords = pointStr.Split(',');
-                if (coords.Length == 2 &&
-                    float.TryParse(coords[0], out float x) &&
-                    float.TryParse(coords[1], out float y))
-                {
-                    _walkPoints.Add(new Vector2(x, y));
+                    uniqueCategories.Add(category);
                 }
             }
-        }
 
-        private void ShowStatusMessage(string message, Color color)
-        {
-            _statusLabel.Text = message;
-            _statusLabel.ForeColor = color;
-        }
-
-        public void Update()
-        {
-            if (_isOrcWalking && _walkPoints.Count > 0)
+            // Crear jerarquía de categorías
+            foreach (var category in uniqueCategories)
             {
-                if ((DateTime.Now - _lastWalkTime).TotalSeconds >= _walkSpeed)
+                CreateCategoryHierarchy(category);
+            }
+
+            // Luego agregar todos los scripts una sola vez
+            foreach (var script in allScripts)
+            {
+                // Evitar duplicados usando un identificador único
+                string scriptId = $"{script.FilePath}_{script.Name}";
+                if (!_processedScripts.Contains(scriptId))
                 {
-                    MoveToNextPoint();
-                    _lastWalkTime = DateTime.Now;
+                    string category = GetCategoryFromScript(script);
+                    AddScriptToCategory(script, category);
+                    _processedScripts.Add(scriptId);
                 }
+            }
+
+            // Ajustar tamaño del menú
+            AdjustMenuSize();
+        }
+
+        private string GetCategoryFromScript(AvalonScript script)
+        {
+            // Si el script tiene un FilePath, extraer la categoría de la ruta
+            if (!string.IsNullOrEmpty(script.FilePath))
+            {
+                // Buscar la carpeta "Scripts" en el path
+                string scriptsFolder = "Scripts";
+                int scriptsIndex = script.FilePath.LastIndexOf(scriptsFolder, StringComparison.OrdinalIgnoreCase);
+
+                if (scriptsIndex >= 0)
+                {
+                    // Obtener la parte después de "Scripts"
+                    string afterScripts = script.FilePath.Substring(scriptsIndex + scriptsFolder.Length);
+
+                    // Remover separadores al inicio
+                    afterScripts = afterScripts.TrimStart('\\', '/');
+
+                    // Obtener solo la parte del directorio (sin el archivo)
+                    string directoryPath = Path.GetDirectoryName(afterScripts);
+
+                    if (!string.IsNullOrEmpty(directoryPath))
+                    {
+                        // Reemplazar separadores con / para consistencia
+                        return directoryPath.Replace('\\', '/');
+                    }
+                }
+            }
+
+            // Si no se puede determinar la categoría del path, usar "General"
+            return "General";
+        }
+
+        private void CreateCategoryHierarchy(string categoryPath)
+        {
+            if (string.IsNullOrEmpty(categoryPath))
+            {
+                categoryPath = "General";
+            }
+
+            // Dividir la ruta de categoría (ej: "walk/test" -> ["walk", "test"])
+            var parts = categoryPath.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+            string currentPath = "";
+            MenuItem parentItem = null;
+
+            for (int i = 0; i < parts.Length; i++)
+            {
+                string part = FormatCategoryName(parts[i]);
+                currentPath = i == 0 ? part : $"{currentPath}/{part}";
+
+                if (!_categoryItems.ContainsKey(currentPath))
+                {
+                    var categoryItem = new MenuItem(part)
+                    {
+                        HeaderBackgroundColor = Color.FromArgb(40, 40, 40),
+                        HeaderTextColor = Color.FromArgb(255, 165, 0)
+                    };
+
+                    if (parentItem == null)
+                    {
+                        // Categoría raíz
+                        _mainMenu.AddItem(categoryItem);
+                    }
+                    else
+                    {
+                        // Subcategoría
+                        parentItem.AddSubItem(categoryItem);
+                    }
+
+                    _categoryItems[currentPath] = categoryItem;
+                }
+
+                parentItem = _categoryItems[currentPath];
             }
         }
 
-        private void MoveToNextPoint()
+        private void AddScriptToCategory(AvalonScript script, string categoryPath)
         {
-            var target = _walkPoints[_currentWalkPoint];
-            RemoteFunctionExecutor.CallRemoteFunction(Process.Handle, PLAYER_MOVE_TO, target.X, target.Y);
+            if (string.IsNullOrEmpty(categoryPath))
+            {
+                categoryPath = "General";
+            }
 
-            _currentWalkPoint = (_currentWalkPoint + 1) % _walkPoints.Count;
+            // Normalizar el path de categoría
+            string normalizedPath = NormalizeCategoryPath(categoryPath);
+
+            if (!_categoryItems.TryGetValue(normalizedPath, out var categoryItem))
+            {
+                // Si la categoría no existe, crearla
+                CreateCategoryHierarchy(normalizedPath);
+                if (!_categoryItems.TryGetValue(normalizedPath, out categoryItem))
+                {
+                    // Fallback a General si aún no existe
+                    if (!_categoryItems.TryGetValue("General", out categoryItem))
+                    {
+                        CreateCategoryHierarchy("General");
+                        categoryItem = _categoryItems["General"];
+                    }
+                }
+            }
+
+            // Crear item del script
+            var scriptItem = new MenuItem(script.Name)
+            {
+                IsEnabled = script.IsEnabled,
+                HeaderBackgroundColor = Color.FromArgb(35, 35, 35),
+                HeaderTextColor = Color.White
+            };
+
+            var contentItem = CreateControl(script);
+
+            scriptItem.Content = contentItem;
+            scriptItem.Height = contentItem.Height + 10;
+
+            // Agregar a la categoría
+            categoryItem.AddSubItem(scriptItem);
         }
 
+        private string NormalizeCategoryPath(string categoryPath)
+        {
+            if (string.IsNullOrEmpty(categoryPath)) return "General";
+
+            // Convertir separadores a formato consistente
+            var parts = categoryPath.Split(new[] { '/', '\\', '>' }, StringSplitOptions.RemoveEmptyEntries);
+            var normalizedParts = parts.Select(p => FormatCategoryName(p.Trim())).ToArray();
+
+            return string.Join("/", normalizedParts);
+        }
+
+        private UIControl CreateControl(AvalonScript control)
+        {
+            switch (control.Type)
+            {
+                case ScriptControlType.Button:
+                    var button = new Button();
+                    button.Width = MenuWidth;
+                    button.Text = control.Name;
+                    button.Click += (sender, pos) => control.ChangeValue(true);
+                    return button;
+
+                case ScriptControlType.Slider:
+                    var slider = new Slider();
+                    slider.Width = MenuWidth;
+                    slider.Text = control.Name;
+                    slider.Value = Convert.ToSingle(control.Value);
+                    slider.ValueChanged += (value) => control.ChangeValue(value);
+                    return slider;
+
+                default:
+                    var checkBox = new CheckBox();
+                    checkBox.Width = MenuWidth;
+                    checkBox.Orientation = CheckBoxOrientation.Right;
+                    checkBox.Text = control.Name;
+                    checkBox.Checked = Convert.ToBoolean(control.Value);
+                    checkBox.BackColor = Color.Red;
+                    checkBox.CheckColor = Color.Green;
+                    checkBox.CheckedChanged += (isChecked) => control.ChangeValue(isChecked);
+                    return checkBox;
+            }
+        }
+
+        private string FormatCategoryName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return "General";
+            TextInfo textInfo = CultureInfo.CurrentCulture.TextInfo;
+            return textInfo.ToTitleCase(name.ToLower());
+        }
+
+        private void AdjustMenuSize()
+        {
+            float totalHeight = _mainMenu.ShowHeader ? _mainMenu.HeaderHeight + _mainMenu.SeparatorHeight : 0;
+            totalHeight += _mainMenu.BorderWidth * 2;
+
+            foreach (var item in _mainMenu.GetAllItems())
+            {
+                totalHeight += item.CalculateTotalHeight();
+            }
+
+            _mainMenu.Height = Math.Min(totalHeight, MaxMenuHeight);
+        }
+
+        #region RENDER
         public void Render()
         {
-            Update();
+            if (!_isInitialized) return;
 
+            // Toggle del menú con F1
             if (InputSystem.GetKeyDown(Keys.F1))
             {
-                MainWindow.Visible = !MainWindow.Visible;
+                _mainMenu.Visible = !_mainMenu.Visible;
             }
 
-            if (_isInitialized && MainWindow != null)
+            // Actualizar y dibujar
+            _mainMenu.Update();
+            _mainMenu.Draw();
+            
+            foreach(var script in MoonSharpScriptLoader.Scripts)
             {
-                MainWindow.Update();
-                MainWindow.Draw();
+                script.Update();
+                script.Draw();
             }
-
 
             InputSystem.Update();
         }
 
         public void Shutdown()
         {
-            MainWindow?.Close();
+            _processedScripts.Clear();
             _isInitialized = false;
         }
+
+        // Propiedades públicas
+        public bool IsMenuVisible => _mainMenu?.Visible ?? false;
+        public int ScriptCount => MoonSharpScriptLoader.Scripts.Count;
+        public int CategoryCount => _categoryItems.Count;
+        #endregion
     }
 }

@@ -411,7 +411,7 @@ namespace AvalonInjectLib
             if (string.IsNullOrEmpty(text))
                 return Vector2.Zero;
 
-            scale = (scale / 4);
+            float _scale = (scale / 4);
             float maxWidth = 0f;
             float currentWidth = 0f;
             int lineCount = 1;
@@ -429,7 +429,7 @@ namespace AvalonInjectLib
 
                 if (font.Glyphs.TryGetValue(c, out var glyph))
                 {
-                    currentWidth += glyph.Advance * scale;
+                    currentWidth += glyph.Advance * _scale;
                 }
             }
 
@@ -447,121 +447,8 @@ namespace AvalonInjectLib
                 return 0f;
 
             scale = (scale / 4);
-
             // Altura de línea = (ascent - descent + lineGap) * escala de fuente * escala aplicada
             return (font.Ascent - font.Descent + font.LineGap) * font.FontScale * scale;
-        }
-
-        // Método para obtener métricas detalladas de un carácter específico
-        internal static GlyphMetrics GetCharacterMetrics(uint fontId, char c, float scale = 1.0f)
-        {
-            if (!_loadedFonts.TryGetValue(fontId, out var font) || !font.IsLoaded)
-                return new GlyphMetrics();
-
-            if (!font.Glyphs.TryGetValue(c, out var glyph))
-                return new GlyphMetrics();
-
-            scale = (scale / 4);
-            return new GlyphMetrics
-            {
-                Advance = glyph.Advance * scale,
-                BearingX = glyph.BearingX * scale,
-                BearingY = glyph.BearingY * scale,
-                Width = glyph.Width * scale,
-                Height = glyph.Height * scale
-            };
-        }
-
-        // Método para obtener ancho preciso de un string sin saltos de línea
-        internal static float GetStringWidth(uint fontId, string text, float scale = 1.0f)
-        {
-            if (!_loadedFonts.TryGetValue(fontId, out var font) || !font.IsLoaded)
-                return 0f;
-
-            if (string.IsNullOrEmpty(text))
-                return 0f;
-
-            scale = (scale / 4);
-
-            float width = 0f;
-            for (int i = 0; i < text.Length; i++)
-            {
-                char c = text[i];
-                if (font.Glyphs.TryGetValue(c, out var glyph))
-                {
-                    width += glyph.Advance * scale;
-                }
-            }
-
-            return width;
-        }
-
-        // Método para obtener información de baseline y métricas verticales
-        public static FontVerticalMetrics GetVerticalMetrics(uint fontId, float scale = 1.0f)
-        {
-            if (!_loadedFonts.TryGetValue(fontId, out var font) || !font.IsLoaded)
-                return new FontVerticalMetrics();
-
-            float finalScale = font.FontScale * scale;
-            scale = (scale / 4);
-
-            return new FontVerticalMetrics
-            {
-                Ascent = font.Ascent * finalScale,
-                Descent = font.Descent * finalScale,
-                LineGap = font.LineGap * finalScale,
-                LineHeight = (font.Ascent - font.Descent + font.LineGap) * finalScale,
-
-                // Métricas adicionales para centrado visual mejorado
-                VisualHeight = (font.Ascent + font.Descent) * finalScale,
-                VisualAscent = font.Ascent * finalScale * 0.75f,  // Altura visual efectiva
-                VisualDescent = font.Descent * finalScale * 0.75f,
-                CapHeight = font.Ascent * finalScale * 0.7f,      // Altura aproximada de mayúsculas
-                XHeight = font.Ascent * finalScale * 0.5f,        // Altura aproximada de minúsculas
-
-                // Centro visual para centrado perfecto
-                VisualCenter = (font.Ascent - font.Descent) * finalScale * 0.5f * 0.75f
-            };
-        }
-
-        // Versión extendida con más opciones de centrado
-        public static FontVerticalMetrics GetVerticalMetricsExtended(uint fontId, float scale = 1.0f,
-            float visualAdjustment = 0.75f, float capHeightRatio = 0.7f)
-        {
-            if (!_loadedFonts.TryGetValue(fontId, out var font) || !font.IsLoaded)
-                return new FontVerticalMetrics();
-
-            scale = (scale / 4);
-
-            float finalScale = font.FontScale * scale;
-            float ascent = font.Ascent * finalScale;
-            float descent = font.Descent * finalScale;
-            float lineGap = font.LineGap * finalScale;
-
-            return new FontVerticalMetrics
-            {
-                // Métricas básicas
-                Ascent = ascent,
-                Descent = descent,
-                LineGap = lineGap,
-                LineHeight = (font.Ascent - font.Descent + font.LineGap) * finalScale,
-
-                // Métricas visuales ajustadas
-                VisualHeight = ascent + descent,
-                VisualAscent = ascent * visualAdjustment,
-                VisualDescent = descent * visualAdjustment,
-                CapHeight = ascent * capHeightRatio,
-                XHeight = ascent * 0.5f,
-
-                // Centros calculados para diferentes tipos de centrado
-                VisualCenter = (ascent - descent) * visualAdjustment * 0.5f,
-                GeometricCenter = (ascent - descent) * 0.5f,
-                CapCenter = (ascent * capHeightRatio) * 0.5f,
-
-                // Baseline offsets para centrado (corregidos)
-                BaselineOffsetForVisualCenter = -((ascent * visualAdjustment - descent * visualAdjustment) * 0.5f),
-                BaselineOffsetForCapCenter = -(ascent * capHeightRatio * 0.5f)
-            };
         }
 
         public static void DeleteFont(uint pendingId)

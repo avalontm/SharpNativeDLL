@@ -213,10 +213,16 @@ namespace AvalonInjectLib
             }
         }
 
-        public static void DrawTriangle(float v1, float v2, float v3, float v4, float v5, float v6, UIFramework.Color color)
+        public static void DrawTriangle(float x1, float y1, float x2, float y2, float x3, float y3, UIFramework.Color color)
         {
-            
+            DrawTriangle(
+                new Vector2(x1, y1),
+                new Vector2(x2, y2),
+                new Vector2(x3, y3),
+                color
+            );
         }
+
 
         public static void DrawTriangle(Vector2 vector21, Vector2 vector22, Vector2 vector23, UIFramework.Color color)
         {

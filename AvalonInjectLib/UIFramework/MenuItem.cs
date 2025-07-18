@@ -1,59 +1,95 @@
-﻿using static AvalonInjectLib.FontRenderer;
-using static AvalonInjectLib.Structs;
+﻿using static AvalonInjectLib.Structs;
 
 namespace AvalonInjectLib.UIFramework
 {
     public class MenuItem : UIControl
     {
-        // Constantes para el diseño
-        private const float DEFAULT_HEIGHT = 25f;
-        private const float INDENT_SIZE = 15f;
-        private const float ARROW_SIZE = 8f;
-        private const float TEXT_PADDING = 5f;
-        private const float ARROW_PADDING = 5f;
+        // Propiedades visuales del header
+        public Color HeaderBackgroundColor { get; set; } = Color.FromArgb(35, 35, 35);
+        public Color HeaderBackgroundColorHover { get; set; } = Color.FromArgb(45, 45, 45);
+        public Color HeaderBackgroundColorSelected { get; set; } = Color.FromArgb(55, 55, 55);
+        public Color HeaderTextColor { get; set; } = Color.White;
+        public Color HeaderTextColorDisabled { get; set; } = Color.FromArgb(128, 128, 128);
+        public Color StatusOnColor { get; set; } = Color.FromArgb(0, 255, 0);
+        public Color StatusOffColor { get; set; } = Color.FromArgb(255, 0, 0);
+        public Color ArrowColor { get; set; } = Color.FromArgb(200, 200, 200);
 
-        // Propiedades del elemento
-        public string Text { get; set; } = string.Empty;
+        // Propiedades del header
+        public float HeaderHeight { get; set; } = 28f;
+        public Font HeaderFont { get; set; } = Font.GetDefaultFont();
         public bool IsExpanded { get; set; } = false;
-        public bool IsSelected { get; set; } = false;
-        public bool HasChildren => Children.Any();
-        public int Level { get; set; } = 0;
-        public bool ShowWarning { get; set; } = false;
-        public string WarningText { get; set; } = string.Empty;
-
-        // Colores
-        public Color NormalColor { get; set; } = Color.FromArgb(45, 45, 45);
-        public Color SelectedColor { get; set; } = Color.FromArgb(255, 165, 0); // Orange
-        public Color HoverColor { get; set; } = Color.FromArgb(60, 60, 60);
-        public Color ArrowColor { get; set; } = Color.White;
-        public Color WarningColor { get; set; } = Color.FromArgb(255, 165, 0); // Orange
-
-        // Fuente
-        public Font Font { get; set; } = Font.GetDefaultFont();
-
-        // Jerarquía
-        public List<MenuItem> Children { get; private set; } = new List<MenuItem>();
-        public MenuItem ParentItem { get; set; }
+        public bool IsEnabled { get; set; } = true;
 
         // Estados
-        private bool _isHovered = false;
+        public bool IsSelected { get; private set; }
+        public bool IsHovered { get; private set; }
 
-        // Eventos
-        public Action<MenuItem> OnItemClick;
-        public Action<MenuItem> OnItemExpanded;
-        public Action<MenuItem> OnItemCollapsed;
+        // Submenús
+        private List<MenuItem> _subItems = new List<MenuItem>();
+        public bool HasSubItems => _subItems.Count > 0;
 
-        public MenuItem()
+        // Espaciado y medidas
+        public float ArrowSize { get; set; } = 8f;
+        public float StatusIndicatorSize { get; set; } = 8f;
+
+        // NUEVA PROPIEDAD: Content para reemplazar el texto por defecto
+        private UIControl _content;
+        public UIControl Content
         {
-            Height = DEFAULT_HEIGHT;
-            IsFocusable = true;
-            BackColor = NormalColor;
+            get => _content;
+            set
+            {
+                if (_content != value)
+                {
+                    // Limpiar el contenido anterior
+                    if (_content != null)
+                    {
+                        _content.Parent = null;
+                    }
+
+                    _content = value;
+
+                    // Configurar el nuevo contenido
+                    if (_content != null)
+                    {
+                        _content.Parent = this;
+                        // REMOVIDO: UpdateContentLayout() para evitar cambio automático de altura
+                    }
+                }
+            }
         }
 
-        public MenuItem(string text, int level = 0) : this()
+        // Propiedades para el contenido personalizado
+        public float ContentMarginLeft { get; set; } = 4f;
+        public float ContentMarginRight { get; set; } = 4f;
+        public bool UseCustomContent => Content != null;
+
+        // Eventos
+        public Action<MenuItem> OnItemSelected;
+        public Action<MenuItem> OnToggleExpanded;
+
+        public MenuItem(string name = "")
         {
-            Text = text;
-            Level = level;
+            Name = name;
+            IsFocusable = true;
+            // REMOVIDO: UpdateHeight() para evitar establecer altura automáticamente
+            // La altura ahora debe ser establecida manualmente por el usuario
+        }
+
+        // MÉTODO REMOVIDO: UpdateHeight() ya no se llama automáticamente
+        // Si necesitas calcular una altura sugerida, puedes usar CalculateSuggestedHeight()
+        public float CalculateSuggestedHeight()
+        {
+            // Si hay contenido personalizado, sugiere Content.Height
+            if (UseCustomContent && Content != null)
+            {
+                return Content.Height;
+            }
+            else
+            {
+                // Si no hay contenido, sugiere HeaderHeight
+                return HeaderHeight;
+            }
         }
 
         public override void Draw()
@@ -61,264 +97,201 @@ namespace AvalonInjectLib.UIFramework
             if (!Visible) return;
 
             var absPos = GetAbsolutePosition();
-            var currentColor = GetCurrentBackgroundColor();
 
-            // Dibujar fondo
-            Renderer.DrawRect(new Rect(absPos.X, absPos.Y, Width, Height), currentColor);
-
-            // Calcular posición del texto con indentación
-            float textX = absPos.X + (Level * INDENT_SIZE) + TEXT_PADDING;
-
-            // Centrar texto verticalmente usando métricas de la fuente
-            float textY = CalculateVerticalCenterPosition(absPos.Y, Height, Font, Text);
-
-            // Dibujar flecha si tiene hijos
-            if (HasChildren)
+            if (UseCustomContent)
             {
-                float arrowX = textX + ARROW_PADDING;
-                float arrowY = absPos.Y + (Height / 2); // La flecha se centra simple
-                DrawArrow(arrowX, arrowY, IsExpanded);
-                textX += ARROW_SIZE + ARROW_PADDING * 2;
+                // Solo dibujar el contenido personalizado (sin header)
+                DrawCustomContent(absPos.X, absPos.Y);
             }
-
-            // Dibujar texto
-            Renderer.DrawText(Text, new Vector2(textX, textY), ForeColor, Font);
-
-            // Dibujar indicador de advertencia si es necesario
-            if (ShowWarning && !string.IsNullOrEmpty(WarningText))
+            else
             {
-                float warningX = absPos.X + Width - 100f; // Posición fija desde la derecha
-                float warningY = CalculateVerticalCenterPosition(absPos.Y, Height, Font, Text);
-                Renderer.DrawText(WarningText, new Vector2(warningX, warningY), WarningColor, Font);
+                // Dibujar solo el header con el texto
+                DrawHeader(absPos);
             }
-
-            // IMPORTANTE: No dibujar hijos aquí - el MenuList se encarga de esto
         }
 
-        /// <summary>
-        /// Calcula la posición Y para centrar el texto verticalmente dentro del elemento
-        /// </summary>
-        private float CalculateVerticalCenterPosition(float elementY, float elementHeight, Font font, string text)
+        private void DrawHeader(Vector2 absPos)
+        {
+            // Determinar color de fondo del header
+            Color bgColor = HeaderBackgroundColor;
+            if (IsSelected)
+                bgColor = HeaderBackgroundColorSelected;
+            else if (IsHovered)
+                bgColor = HeaderBackgroundColorHover;
+
+            // Dibujar fondo del header
+            Renderer.DrawRect(absPos.X, absPos.Y, Width, HeaderHeight, bgColor);
+
+            // Dibujar texto del header
+            DrawDefaultText(absPos.X, absPos.Y);
+
+            // Dibujar flecha de expansión si hay subitems
+            if (HasSubItems)
+            {
+                float centerY = absPos.Y + (HeaderHeight / 2);
+                float arrowX = absPos.X + Width - ArrowSize;
+                var arrowPos = new Vector2(arrowX, centerY);
+                var arrowColor = IsEnabled ? ArrowColor : HeaderTextColorDisabled;
+                DrawArrow(arrowPos, arrowColor);
+            }
+        }
+
+        private void DrawCustomContent(float startX, float startY)
+        {
+            if (Content == null) return;
+
+            // Calcular el área disponible para el contenido
+            float availableWidth = Math.Max(0, Width - ContentMarginLeft - ContentMarginRight);
+            float availableHeight = Height; // Altura total del MenuItem
+
+            // Calcular posición centrada verticalmente
+            float contentHeight = Content.Height;
+            float centeredY = (availableHeight - contentHeight) / 2;
+
+            // Posicionar el contenido centrado
+            Content.X = startX - GetAbsolutePosition().X + ContentMarginLeft;
+            Content.Y = startY - GetAbsolutePosition().Y + centeredY;
+            Content.Width = availableWidth;
+
+            // Dibujar el contenido
+            Content.Draw();
+        }
+
+        private void DrawDefaultText(float startX, float headerY)
+        {
+            if (string.IsNullOrEmpty(Name) || HeaderFont == null || !HeaderFont.IsReady)
+                return;
+
+            var textColor = IsEnabled ? HeaderTextColor : HeaderTextColorDisabled;
+            var textPos = new Vector2(
+                startX + 5,
+                CalculateVerticalCenterPositionForText(headerY, HeaderHeight, HeaderFont, Name)
+            );
+            Renderer.DrawText(Name, textPos, textColor, HeaderFont);
+        }
+
+        // MÉTODO REMOVIDO: UpdateContentLayout() ya no cambia la altura automáticamente
+
+        private void DrawArrow(Vector2 position, Color color)
+        {
+            if (HasSubItems)
+            {
+                float triangleSize = ArrowSize * 0.8f;
+                Vector2[] points;
+
+                // Flecha hacia la derecha ▶
+                points = new Vector2[]
+                {
+                    new Vector2(position.X + triangleSize / 2, position.Y),               // Vértice derecho
+                    new Vector2(position.X - triangleSize / 2, position.Y - triangleSize / 2), // Superior izquierdo
+                    new Vector2(position.X - triangleSize / 2, position.Y + triangleSize / 2)  // Inferior izquierdo
+                };
+
+                Renderer.DrawTriangle(points[0], points[1], points[2], color);
+            }
+
+        }
+
+        public override void Update()
+        {
+            base.Update();
+
+            // Actualizar contenido personalizado
+            if (UseCustomContent && Content != null)
+            {
+                Content.Update();
+            }
+
+        }
+
+        // Cálculo de altura total (renombrado para claridad)
+        public float CalculateTotalHeight()
+        {
+            return UseCustomContent ? Content.Height : HeaderHeight;
+        }
+
+        // Métodos de manejo de submenús
+        public void AddSubItem(MenuItem item)
+        {
+            if (item == null) return;
+
+            item.Parent = this;
+            _subItems.Add(item);
+        }
+
+        public void RemoveSubItem(MenuItem item)
+        {
+            if (item == null) return;
+
+            _subItems.Remove(item);
+            item.Parent = null;
+        }
+
+        public void ClearSubItems()
+        {
+            foreach (var item in _subItems)
+            {
+                item.Parent = null;
+            }
+            _subItems.Clear();
+        }
+
+        public List<MenuItem> GetSubItems()
+        {
+            return _subItems;
+        }
+
+        // Métodos de estado
+        public void SetSelected(bool selected)
+        {
+            if (IsSelected != selected)
+            {
+                IsSelected = selected;
+                if (selected)
+                {
+                    OnItemSelected?.Invoke(this);
+                }
+            }
+        }
+
+        public void SetHovered(bool hovered)
+        {
+            if (IsHovered != hovered)
+            {
+                IsHovered = hovered;
+            }
+        }
+
+        // Override de eventos del UIControl
+        protected override void OnClick(object sender, Vector2 pos)
+        {
+            if (!IsEnabled) return;
+        }
+
+        protected override void OnMouseEnter(object sender, Vector2 pos)
+        {
+            SetHovered(true);
+        }
+
+        protected override void OnMouseLeave(object sender, Vector2 pos)
+        {
+            SetHovered(false);
+        }
+
+        // Método específico para centrar texto por defecto (sin paddings adicionales)
+        private float CalculateVerticalCenterPositionForText(float elementY, float elementHeight, Font font, string text)
         {
             if (font == null || !font.IsReady || string.IsNullOrEmpty(text))
             {
                 return elementY + (elementHeight / 2);
             }
 
-            // Usar el mismo método que tu Label funcional
             var textSize = font.MeasureText(text);
             float textHeight = textSize.Y;
 
-            // Centrar usando el tamaño real del texto
+            // Centrar verticalmente el texto directamente en el header
             return elementY + (elementHeight - textHeight) / 2;
         }
 
-        private void DrawArrow(float x, float y, bool isExpanded)
-        {
-            // Dibujar flecha simple usando líneas
-            Vector2 center = new Vector2(x, y);
-            float halfSize = ARROW_SIZE / 2;
-
-            if (isExpanded)
-            {
-                // Flecha hacia abajo (▼)
-                Vector2 p1 = new Vector2(center.X - halfSize, center.Y - halfSize / 2);
-                Vector2 p2 = new Vector2(center.X + halfSize, center.Y - halfSize / 2);
-                Vector2 p3 = new Vector2(center.X, center.Y + halfSize / 2);
-
-                Renderer.DrawLine(p1, p2, 1f, ArrowColor);
-                Renderer.DrawLine(p2, p3, 1f, ArrowColor);
-                Renderer.DrawLine(p3, p1, 1f, ArrowColor);
-            }
-            else
-            {
-                // Flecha hacia la derecha (▶)
-                Vector2 p1 = new Vector2(center.X - halfSize / 2, center.Y - halfSize);
-                Vector2 p2 = new Vector2(center.X - halfSize / 2, center.Y + halfSize);
-                Vector2 p3 = new Vector2(center.X + halfSize / 2, center.Y);
-
-                Renderer.DrawLine(p1, p2, 1f, ArrowColor);
-                Renderer.DrawLine(p2, p3, 1f, ArrowColor);
-                Renderer.DrawLine(p3, p1, 1f, ArrowColor);
-            }
-        }
-
-        private Color GetCurrentBackgroundColor()
-        {
-            if (IsSelected)
-                return SelectedColor;
-
-            if (_isHovered)
-                return HoverColor;
-
-            return NormalColor;
-        }
-
-        public override void Update()
-        {
-            base.Update();
-            // No actualizar hijos aquí - el MenuList se encarga de esto
-        }
-
-        protected override void OnMouseEnter(Vector2 mousePos)
-        {
-            base.OnMouseEnter(mousePos);
-            _isHovered = true;
-        }
-
-        protected override void OnMouseLeave(Vector2 mousePos)
-        {
-            base.OnMouseLeave(mousePos);
-            _isHovered = false;
-        }
-
-        protected override void OnClick(Vector2 mousePos)
-        {
-            base.OnClick(mousePos);
-
-            // Si tiene hijos, alternar expansión
-            if (HasChildren)
-            {
-                ToggleExpansion();
-            }
-
-            // Notificar click del elemento
-            OnItemClick?.Invoke(this);
-        }
-
-        // Métodos públicos para manejo de jerarquía
-        public void AddChild(MenuItem child)
-        {
-            if (child == null) return;
-
-            child.ParentItem = this;
-            child.Level = this.Level + 1;
-            child.Parent = this.Parent; // Mismo contenedor padre
-            Children.Add(child);
-
-            // Configurar eventos si el parent ya está configurado
-            if (this.Parent != null && this.Parent is MenuList menuList)
-            {
-                SetupChildEvents(child, menuList);
-            }
-        }
-
-        private void SetupChildEvents(MenuItem child, MenuList menuList)
-        {
-            child.OnItemClick += menuList.OnItemSelected;
-            child.OnItemExpanded += menuList.OnItemExpanded;
-            child.OnItemCollapsed += menuList.OnItemCollapsed;
-
-            // Configurar recursivamente para los hijos del hijo
-            foreach (var grandChild in child.Children)
-            {
-                SetupChildEvents(grandChild, menuList);
-            }
-        }
-
-        public void RemoveChild(MenuItem child)
-        {
-            if (child == null) return;
-
-            Children.Remove(child);
-            child.ParentItem = null;
-        }
-
-        public void ToggleExpansion()
-        {
-            IsExpanded = !IsExpanded;
-
-            if (IsExpanded)
-            {
-                OnItemExpanded?.Invoke(this);
-            }
-            else
-            {
-                OnItemCollapsed?.Invoke(this);
-            }
-        }
-
-        public void Expand()
-        {
-            if (!IsExpanded)
-            {
-                IsExpanded = true;
-                OnItemExpanded?.Invoke(this);
-            }
-        }
-
-        public void Collapse()
-        {
-            if (IsExpanded)
-            {
-                IsExpanded = false;
-                OnItemCollapsed?.Invoke(this);
-            }
-        }
-
-        // Método eliminado - UpdateChildrenLayout ya no es necesario
-        // El MenuList se encarga del layout
-
-        // Método eliminado - GetTotalChildrenHeight ya no es necesario
-        // El MenuList se encarga del cálculo de altura
-
-        public void SetSelected(bool selected)
-        {
-            IsSelected = selected;
-
-            // Deseleccionar hermanos si este se selecciona
-            if (selected && ParentItem != null)
-            {
-                foreach (var sibling in ParentItem.Children)
-                {
-                    if (sibling != this)
-                    {
-                        sibling.SetSelected(false);
-                    }
-                }
-            }
-        }
-
-        public List<MenuItem> GetAllItems()
-        {
-            var items = new List<MenuItem> { this };
-
-            foreach (var child in Children)
-            {
-                items.AddRange(child.GetAllItems());
-            }
-
-            return items;
-        }
-
-        public MenuItem FindItem(string text)
-        {
-            if (Text == text) return this;
-
-            foreach (var child in Children)
-            {
-                var found = child.FindItem(text);
-                if (found != null) return found;
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// Ajusta automáticamente la altura del elemento basándose en la fuente
-        /// </summary>
-        public void AutoSizeHeight()
-        {
-            if (Font != null && Font.IsReady)
-            {
-                float fontHeight = Font.LineHeight;
-                Height = Math.Max(fontHeight + (TEXT_PADDING * 2), DEFAULT_HEIGHT);
-            }
-        }
-
-        public override string ToString()
-        {
-            return $"MenuItem: {Text} (Level: {Level}, Children: {Children.Count})";
-        }
     }
 }

@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+	<Nullable>enable</Nullable>
+	<OutputType>Library</OutputType>
+	<EnableDynamicLoading>true</EnableDynamicLoading>
+	<PublishAot>true</PublishAot>
+	<SelfContained>true</SelfContained>
+	  <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AvalonInjectLib\AvalonInjectLib.csproj" />
+  </ItemGroup>
+
+</Project>

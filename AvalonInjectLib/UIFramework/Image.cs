@@ -64,18 +64,20 @@ namespace AvalonInjectLib.UIFramework
             }
         }
 
-        protected override void OnMouseMove(Vector2 mousePos)
+        protected override void OnMouseMove(object sender, Vector2 pos)
         {
-            base.OnMouseMove(mousePos);
+            base.OnMouseMove(sender, pos);
             if (IsInteractive)
             {
+                var mousePos = UIEventSystem.MousePosition;
                 IsHovered = Contains(mousePos);
             }
         }
 
-        protected override void OnClick(Vector2 mousePos)
+        protected override void OnClick(object sender, Vector2 pos)
         {
-            base.OnClick(mousePos);
+            base.OnClick(sender, pos);
+            var mousePos = UIEventSystem.MousePosition;
             if (IsInteractive && Contains(mousePos) && Enabled)
             {
                 Click?.Invoke();

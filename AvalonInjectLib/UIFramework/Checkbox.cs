@@ -2,6 +2,12 @@
 
 namespace AvalonInjectLib.UIFramework
 {
+    public enum CheckBoxOrientation
+    {
+        Left,   // Check + Texto (por defecto)
+        Right   // Texto + Check
+    }
+
     public class CheckBox : UIControl
     {
         // Constantes para el diseño
@@ -12,6 +18,7 @@ namespace AvalonInjectLib.UIFramework
         private bool _isChecked;
         private bool _isHovered;
         private bool _isPressed;
+        private CheckBoxOrientation _orientation = CheckBoxOrientation.Left;
 
         // Propiedades
         public bool Checked
@@ -28,6 +35,20 @@ namespace AvalonInjectLib.UIFramework
         }
 
         public string Text { get; set; } = string.Empty;
+
+        public CheckBoxOrientation Orientation
+        {
+            get => _orientation;
+            set
+            {
+                if (_orientation != value)
+                {
+                    _orientation = value;
+                    UpdateLayout();
+                }
+            }
+        }
+
         public Color BoxColor { get; set; } = Color.FromArgb(100, 149, 237); // CornflowerBlue
         public Color CheckColor { get; set; } = Color.White;
         public Color HoverBoxColor { get; set; } = Color.FromArgb(120, 169, 247);
@@ -40,9 +61,33 @@ namespace AvalonInjectLib.UIFramework
         public CheckBox()
         {
             IsFocusable = true;
-            Width = BOX_SIZE + TEXT_SPACING + 100; // Espacio para texto
-            Height = BOX_SIZE;
-            IsFocusable = true;
+            Width = 150f; // Ancho por defecto
+            Height = 32f; // Altura por defecto
+            UpdateLayout();
+        }
+
+        private void UpdateLayout()
+        {
+            // Calcular dimensiones basadas en el texto
+            float textWidth = 0f;
+            float textHeight = 0f;
+
+            if (!string.IsNullOrEmpty(Text))
+            {
+                var textSize = Font.MeasureText(Text);
+                textWidth = textSize.X;
+                textHeight = textSize.Y;
+            }
+
+            // Calcular dimensiones totales solo si la orientación es Left
+            // Para Right, mantenemos el ancho actual del control
+            if (Orientation == CheckBoxOrientation.Left)
+            {
+                Width = BOX_SIZE + (textWidth > 0 ? TEXT_SPACING + textWidth : 0);
+            }
+            // Para Right, el Width se mantiene como está establecido externamente
+
+            Height = Math.Max(32f, textHeight);
         }
 
         public override void Draw()
@@ -52,15 +97,19 @@ namespace AvalonInjectLib.UIFramework
             var absPos = GetAbsolutePosition();
             var currentBoxColor = GetCurrentBoxColor();
 
+            // Calcular posiciones según la orientación
+            float boxX, boxY, textX, textY;
+            CalculatePositions(absPos, out boxX, out boxY, out textX, out textY);
+
             // Dibujar el cuadro del checkbox
             Renderer.DrawRect(
-                new Rect(absPos.X, absPos.Y, BOX_SIZE, BOX_SIZE),
+                new Rect(boxX, boxY, BOX_SIZE, BOX_SIZE),
                 currentBoxColor
             );
 
             // Dibujar el borde
             Renderer.DrawRectOutline(
-                new Rect(absPos.X, absPos.Y, BOX_SIZE, BOX_SIZE),
+                new Rect(boxX, boxY, BOX_SIZE, BOX_SIZE),
                 Color.FromArgb(150, 150, 150),
                 1f
             );
@@ -69,7 +118,7 @@ namespace AvalonInjectLib.UIFramework
             if (Checked)
             {
                 Renderer.DrawRect(
-                    new Rect(absPos.X + 2, absPos.Y + 2, BOX_SIZE - 4, BOX_SIZE - 4),
+                    new Rect(boxX + 2, boxY + 2, BOX_SIZE - 4, BOX_SIZE - 4),
                     CheckColor
                 );
             }
@@ -79,10 +128,41 @@ namespace AvalonInjectLib.UIFramework
             {
                 Renderer.DrawText(
                     Text,
-                    new Vector2(absPos.X + BOX_SIZE + TEXT_SPACING, absPos.Y),
+                    new Vector2(textX, textY),
                     ForeColor,
                     Font
                 );
+            }
+        }
+
+        private void CalculatePositions(Vector2 absPos, out float boxX, out float boxY, out float textX, out float textY)
+        {
+            // Calcular altura del texto para centrado vertical
+            float textHeight = !string.IsNullOrEmpty(Text) ? Font.GetTextHeight(Text) : 0f;
+
+            // Centrar verticalmente los elementos
+            boxY = absPos.Y + (Height - BOX_SIZE) / 2;
+            textY = absPos.Y + (Height - textHeight) / 2;
+
+            switch (Orientation)
+            {
+                case CheckBoxOrientation.Left:
+                    // Check + Texto (orientación por defecto)
+                    boxX = absPos.X;
+                    textX = absPos.X + BOX_SIZE + TEXT_SPACING;
+                    break;
+
+                case CheckBoxOrientation.Right:
+                    // Texto ocupa todo el ancho disponible, Check fijo en el lado derecho
+                    boxX = absPos.X + Width - BOX_SIZE;
+                    textX = absPos.X;
+                    break;
+
+                default:
+                    // Fallback a Left
+                    boxX = absPos.X;
+                    textX = absPos.X + BOX_SIZE + TEXT_SPACING;
+                    break;
             }
         }
 
@@ -113,9 +193,9 @@ namespace AvalonInjectLib.UIFramework
             _isHovered = isMouseOver;
         }
 
-        protected override void OnClick(Vector2 mousePos)
+        protected override void OnClick(object sender, Vector2 pos)
         {
-            base.OnClick(mousePos);
+            base.OnClick(sender, pos);
             if (Enabled)
             {
                 Checked = !Checked;
@@ -129,15 +209,54 @@ namespace AvalonInjectLib.UIFramework
         {
             var absPos = GetAbsolutePosition();
 
-            // Área clickeable incluye el cuadro y el texto
-            float totalWidth = BOX_SIZE;
-            if (!string.IsNullOrEmpty(Text))
-            {
-                var textSize = Font.MeasureText(Text);
-                totalWidth += TEXT_SPACING + textSize.X;
-            }
+            // El área clickeable siempre incluye todo el control
+            return new Rect(absPos.X, absPos.Y, Width, Height).Contains(point);
+        }
 
-            return new Rect(absPos.X, absPos.Y, totalWidth, Height).Contains(point);
+        /// <summary>
+        /// Método auxiliar para configurar la orientación del checkbox
+        /// </summary>
+        /// <param name="orientation">Orientación deseada</param>
+        public void SetOrientation(CheckBoxOrientation orientation)
+        {
+            Orientation = orientation;
+        }
+
+        /// <summary>
+        /// Método auxiliar para configurar el texto y actualizar el layout
+        /// </summary>
+        /// <param name="text">Texto a mostrar</param>
+        public void SetText(string text)
+        {
+            Text = text;
+            UpdateLayout();
+        }
+
+        /// <summary>
+        /// Método auxiliar para configurar el ancho del control (útil para orientación Right)
+        /// </summary>
+        /// <param name="width">Ancho deseado del control</param>
+        public void SetWidth(float width)
+        {
+            Width = width;
+            // No necesitamos llamar UpdateLayout() ya que el ancho se respeta en orientación Right
+        }
+
+        /// <summary>
+        /// Método auxiliar para configurar texto, orientación y ancho al mismo tiempo
+        /// </summary>
+        /// <param name="text">Texto a mostrar</param>
+        /// <param name="orientation">Orientación deseada</param>
+        /// <param name="width">Ancho del control (opcional, solo se usa si orientation es Right)</param>
+        public void SetTextAndOrientation(string text, CheckBoxOrientation orientation, float? width = null)
+        {
+            Text = text;
+            if (width.HasValue)
+            {
+                Width = width.Value;
+            }
+            Orientation = orientation;
+            // UpdateLayout() se llama automáticamente cuando cambia Orientation
         }
     }
 }

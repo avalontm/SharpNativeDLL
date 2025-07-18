@@ -114,7 +114,7 @@ namespace AvalonInjectLib
                 TextColor = Color.White
             };
 
-            _closeButton.Click += (pos) => Close();
+            _closeButton.Click += (sender, pos) => Close();
             AddChild(_closeButton);
 
             // Inicializar tamaño de pantalla
@@ -176,16 +176,16 @@ namespace AvalonInjectLib
                     if (UIEventSystem.IsMousePressed && !_isPressed)
                     {
                         _isPressed = true;
-                        OnMouseDown(mousePos);
+                        OnMouseDown(this, mousePos);
                     }
                     // Manejar MouseUp
                     else if (!UIEventSystem.IsMousePressed && _isPressed)
                     {
                         _isPressed = false;
-                        OnMouseUp(mousePos);
+                        OnMouseUp(this, mousePos);
                     }
                     // Manejar MouseMove
-                    OnMouseMove(mousePos);
+                    OnMouseMove(this, mousePos);
                 }
                 else if (_isPressed)
                 {
@@ -194,7 +194,7 @@ namespace AvalonInjectLib
                     {
                         _isPressed = false;
                     }
-                    OnMouseMove(mousePos); // Seguir moviendo aunque el mouse salga
+                    OnMouseMove(this, mousePos); // Seguir moviendo aunque el mouse salga
                 }
             }
 
@@ -210,9 +210,9 @@ namespace AvalonInjectLib
             _content?.Update();
         }
 
-        protected override void OnMouseDown(Vector2 mousePos)
+        protected override void OnMouseDown(object sender, Vector2 mousePos)
         {
-            base.OnMouseDown(mousePos);
+            base.OnMouseDown(sender, mousePos);
 
             // Verificar si el click fue en la barra de título
             if (HasTitleBar && IsActive && IsMouseOnTitleBar(mousePos))
@@ -227,18 +227,18 @@ namespace AvalonInjectLib
             }
         }
 
-        protected override void OnMouseUp(Vector2 mousePos)
+        protected override void OnMouseUp(object sender, Vector2 mousePos)
         {
-            base.OnMouseUp(mousePos);
+            base.OnMouseUp(sender, mousePos);
             if (_isDragging)
             {
                 _isDragging = false;
             }
         }
 
-        protected override void OnMouseMove(Vector2 mousePos)
+        protected override void OnMouseMove(object sender, Vector2 mousePos)
         {
-            base.OnMouseMove(mousePos);
+            base.OnMouseMove(sender, mousePos);
             if (_isDragging)
             {
                 // Calcular nueva posición

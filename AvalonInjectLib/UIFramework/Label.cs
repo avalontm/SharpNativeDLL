@@ -6,7 +6,7 @@ namespace AvalonInjectLib.UIFramework
     {
         // Constantes por defecto
         private const float DEFAULT_WIDTH = 100f;
-        private const float DEFAULT_HEIGHT = 24f;
+        private const float DEFAULT_HEIGHT = 32f;
 
         // Propiedades de texto
         private string _text = string.Empty;

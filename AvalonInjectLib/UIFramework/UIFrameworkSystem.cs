@@ -21,7 +21,7 @@ namespace AvalonInjectLib.UIFramework
             if (_focusedControl != null)
             {
                 _focusedControl.HasFocus = false;
-                _focusedControl.MouseLeave?.Invoke(mousePos);
+                _focusedControl.MouseLeave?.Invoke(control, mousePos);
             }
 
             // Establecer nuevo foco
@@ -29,7 +29,7 @@ namespace AvalonInjectLib.UIFramework
             if (_focusedControl != null)
             {
                 _focusedControl.HasFocus = true;
-                _focusedControl.MouseEnter?.Invoke(mousePos);
+                _focusedControl.MouseEnter?.Invoke(control, mousePos);
             }
 
         }

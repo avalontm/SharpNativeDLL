@@ -20,9 +20,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="StbImageSharp" Version="2.30.15" />
-    <PackageReference Include="StbImageWriteSharp" Version="1.16.7" />
-    <PackageReference Include="StbTrueTypeSharp" Version="1.26.12" />
+	  <PackageReference Include="MoonSharp" Version="2.0.0" />
+	  <PackageReference Include="StbImageSharp" Version="2.30.15" />
+	  <PackageReference Include="StbTrueTypeSharp" Version="1.26.12" />
   </ItemGroup>
 
 </Project>

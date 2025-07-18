@@ -1,5 +1,5 @@
 ﻿using AvalonInjectLib;
-using System.Diagnostics;
+using AvalonInjectLib.Scripting;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -7,7 +7,8 @@ namespace TargetGame
 {
     public class EntryPoint
     {
-        public static ProcessEntry process { private set; get; }
+        static AvalonEngine Engine { set; get; } = new AvalonEngine();
+        public static MoonSharpScriptLoader _luaLoader { private set; get; }
         static MenuSystem menuSystem = new MenuSystem();
         // Constantes
         const uint DLL_PROCESS_ATTACH = 1;
@@ -36,6 +37,7 @@ namespace TargetGame
             try
             {
                 InitializeConsole();
+                InitializeScripts();
                 FindGameProcess();
                 MainLoop();
 
@@ -46,6 +48,15 @@ namespace TargetGame
             }
         }
 
+        private static void InitializeScripts()
+        {
+            _luaLoader = new MoonSharpScriptLoader();
+
+            // Carga y inicializa todos los scripts Lua del directorio "Scripts"
+            _luaLoader.LoadScripts("Scripts", Engine);
+        }
+
+
         private static void InitializeConsole()
         {
             // Establecer la codificación de salida a UTF-8 (65001)
@@ -54,8 +65,8 @@ namespace TargetGame
             //if (LibManager.AttachConsole(-1))
             LibManager.AllocConsole();
 
-            Console.Title = "AssaultCube";
-            Console.WriteLine("=== AssaultCube - V1.3.0.2 ===");
+            Console.Title = "AvalonInjectLib";
+            Console.WriteLine("=== Universal Memory Cheat - V1.0.0.0 ===");
         }
 
         private static void FindGameProcess()
@@ -63,7 +74,9 @@ namespace TargetGame
             var info = InjectionInfo.GetCurrentProcessInfo();
             Logger.Info($"ProcessName: {info.ProcessName}");
 
-            process = ProcessManager.Create(info.ProcessName);
+            var process = ProcessManager.Create(info.ProcessName);
+
+            Engine.SetProcess(process);
 
             if (process == null)
             {
@@ -78,8 +91,7 @@ namespace TargetGame
 
             Renderer.CurrentAPI = Renderer.GraphicsAPI.OpenGL;
             Renderer.InitializeGraphics(process.ProcessId);
-            menuSystem.Initialize(process.ProcessId);
-            menuSystem.Process = process;
+            menuSystem.Initialize();
             Renderer.SetRenderCallback(menuSystem.Render);
         }
 

@@ -28,6 +28,7 @@ namespace AvalonInjectLib.UIFramework
         public static readonly Color DarkGray = new(64, 64, 64);
         public static readonly Color Orange = new(255, 165, 0);
         public static readonly Color Purple = new(128, 0, 128);
+        public static readonly Color LightGreen = new (144, 238, 144);
 
         public override string ToString() => $"R:{R} G:{G} B:{B} A:{A}";
 

@@ -11,6 +11,7 @@ namespace AvalonInjectLib.UIFramework
         private const float THUMB_HEIGHT = 16f;
         private const float VALUE_PADDING = 5f;
         private const float TEXT_PADDING = 5f;
+        private const float VERTICAL_SPACING = 2f; // Espacio entre elementos
 
         // Estados
         private bool _isDragging;
@@ -65,6 +66,7 @@ namespace AvalonInjectLib.UIFramework
                     }
                     // Reclampar el valor actual
                     Value = Math.Clamp(_value, _minValue, _maxValue);
+                    UpdateLayout(); // Actualizar layout por si cambia el formato del valor
                 }
             }
         }
@@ -84,6 +86,7 @@ namespace AvalonInjectLib.UIFramework
                     }
                     // Reclampar el valor actual
                     Value = Math.Clamp(_value, _minValue, _maxValue);
+                    UpdateLayout(); // Actualizar layout por si cambia el formato del valor
                 }
             }
         }
@@ -98,6 +101,7 @@ namespace AvalonInjectLib.UIFramework
                 {
                     Value = (float)Math.Round(Value);
                 }
+                UpdateLayout(); // Actualizar layout porque cambia el formato del valor
             }
         }
 
@@ -115,19 +119,34 @@ namespace AvalonInjectLib.UIFramework
 
         public Slider()
         {
+            Height = 32f;
             Width = 200f;
-            Height = Math.Max(THUMB_HEIGHT, Font.GetTextHeight(Text) + (THUMB_HEIGHT / 2));
-            IsFocusable = true;
             _value = _minValue; // Inicializar con valor mínimo válido
+            UpdateLayout();
+            IsFocusable = true;
         }
 
         private void UpdateLayout()
         {
-            // Ajustar altura si el texto es más grande que el thumb
+            float totalHeight = 0f;
+
+            // Altura del texto descriptivo (si existe)
             if (!string.IsNullOrEmpty(Text))
             {
-                Height = Math.Max(THUMB_HEIGHT, Font.GetTextHeight(Text) + (THUMB_HEIGHT / 2));
+                totalHeight += Font.GetTextHeight(Text) + VERTICAL_SPACING;
             }
+
+            // Altura del slider (thumb)
+            totalHeight += THUMB_HEIGHT;
+
+            // Altura del valor mostrado (si está habilitado)
+            if (ShowValue)
+            {
+                totalHeight += VERTICAL_SPACING + Font.GetTextHeight(FormatValue(Value));
+            }
+
+            // Asignar la altura total calculada
+            Height = totalHeight;
         }
 
         private float GetValuePercentage()
@@ -140,28 +159,40 @@ namespace AvalonInjectLib.UIFramework
             return Math.Clamp((Value - MinValue) / range, 0f, 1f);
         }
 
+        private float GetTextHeight()
+        {
+            return !string.IsNullOrEmpty(Text) ? Font.GetTextHeight(Text) : 0f;
+        }
+
+        private float GetValueHeight()
+        {
+            return ShowValue ? Font.GetTextHeight(FormatValue(Value)) : 0f;
+        }
+
         public override void Draw()
         {
             if (!Visible) return;
 
             var absPos = GetAbsolutePosition();
-            float trackY = absPos.Y + (Height - TRACK_HEIGHT) / 2;
-
-            // Calcular posición del thumb usando porcentaje seguro
-            float percentage = GetValuePercentage();
-            float availableWidth = Width - THUMB_WIDTH;
-            float thumbX = absPos.X + availableWidth * percentage;
+            float currentY = absPos.Y;
 
             // Dibujar texto descriptivo si existe
             if (!string.IsNullOrEmpty(Text))
             {
                 Renderer.DrawText(
                     Text,
-                    new Vector2(absPos.X, absPos.Y - (THUMB_HEIGHT / 2)),
+                    new Vector2(absPos.X, currentY),
                     ForeColor,
                     Font
                 );
+                currentY += Font.GetTextHeight(Text) + VERTICAL_SPACING;
             }
+
+            // Calcular posición del track y thumb
+            float trackY = currentY + (THUMB_HEIGHT - TRACK_HEIGHT) / 2;
+            float percentage = GetValuePercentage();
+            float availableWidth = Width - THUMB_WIDTH;
+            float thumbX = absPos.X + availableWidth * percentage;
 
             // Dibujar track (fondo)
             Renderer.DrawRect(
@@ -169,7 +200,7 @@ namespace AvalonInjectLib.UIFramework
                 TrackColor
             );
 
-            // Dibujar fill (parte llena) - corregido para mantener proporciones
+            // Dibujar fill (parte llena)
             float fillWidth = availableWidth * percentage + THUMB_WIDTH / 2;
             Renderer.DrawRect(
                 new Rect(absPos.X, trackY, fillWidth, TRACK_HEIGHT),
@@ -194,13 +225,12 @@ namespace AvalonInjectLib.UIFramework
             );
 
             // Mostrar valor numérico si está habilitado
-            // Mostrar valor numérico si está habilitado
             if (ShowValue)
             {
+                currentY += THUMB_HEIGHT + VERTICAL_SPACING;
                 string valueText = FormatValue(Value);
                 var textSize = Font.MeasureText(valueText);
                 float valueX = 0f;
-                float valueY = (absPos.Y+ (THUMB_HEIGHT / 2)) + (Height - textSize.Y) / 2;
 
                 // Ajustar posición X considerando el padding
                 switch (ValueAlignment)
@@ -221,7 +251,7 @@ namespace AvalonInjectLib.UIFramework
 
                 Renderer.DrawText(
                     valueText,
-                    new Vector2(valueX, valueY),
+                    new Vector2(valueX, currentY),
                     ForeColor,
                     Font
                 );
@@ -274,12 +304,12 @@ namespace AvalonInjectLib.UIFramework
             if (UIEventSystem.IsMousePressed && isMouseOver && !_isDragging)
             {
                 _isDragging = true;
-                UpdateValueFromMouse(mousePos);
+                UpdateValueFromMouse();
             }
             // Continuar arrastre
             else if (_isDragging && UIEventSystem.IsMousePressed)
             {
-                UpdateValueFromMouse(mousePos);
+                UpdateValueFromMouse();
             }
             // Finalizar arrastre
             else if (_isDragging && !UIEventSystem.IsMousePressed)
@@ -288,8 +318,9 @@ namespace AvalonInjectLib.UIFramework
             }
         }
 
-        private void UpdateValueFromMouse(Vector2 mousePos)
+        private void UpdateValueFromMouse()
         {
+            var mousePos = UIEventSystem.MousePosition;
             var absPos = GetAbsolutePosition();
             float availableWidth = Width - THUMB_WIDTH;
 
@@ -308,19 +339,27 @@ namespace AvalonInjectLib.UIFramework
             Value = newValue;
         }
 
-        protected override void OnClick(Vector2 mousePos)
+        protected override void OnClick(object sender, Vector2 pos)
         {
-            base.OnClick(mousePos);
+            base.OnClick(sender, pos);
             if (Enabled && !_isDragging)
             {
-                UpdateValueFromMouse(mousePos);
+                UpdateValueFromMouse();
             }
         }
 
         public override bool Contains(Vector2 point)
         {
             var absPos = GetAbsolutePosition();
-            float trackY = absPos.Y + (Height - TRACK_HEIGHT) / 2;
+            float sliderY = absPos.Y;
+
+            // Ajustar Y si hay texto descriptivo
+            if (!string.IsNullOrEmpty(Text))
+            {
+                sliderY += Font.GetTextHeight(Text) + VERTICAL_SPACING;
+            }
+
+            float trackY = sliderY + (THUMB_HEIGHT - TRACK_HEIGHT) / 2;
 
             // Área interactiva incluye el thumb y la pista
             return new Rect(
@@ -347,6 +386,12 @@ namespace AvalonInjectLib.UIFramework
         public void SetValue(float value)
         {
             Value = value;
+        }
+
+        // Método para actualizar el layout cuando cambian propiedades que afectan la altura
+        public void RefreshLayout()
+        {
+            UpdateLayout();
         }
     }
 }
