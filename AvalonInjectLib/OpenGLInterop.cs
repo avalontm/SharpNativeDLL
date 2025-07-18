@@ -1006,7 +1006,7 @@ namespace AvalonInjectLib
         internal const int GL_ONE_MINUS_SRC_ALPHA = 0x0303;
         internal const int GL_QUADS = 0x0007;
         internal const int GL_ALPHA = 0x1906;
-
+        internal const int GL_MATRIX_MODE = 0x0BA0;
         internal const int GL_TEXTURE_WRAP_S = 0x2802;
         internal const int GL_TEXTURE_WRAP_T = 0x2803;
 
@@ -1283,6 +1283,11 @@ namespace AvalonInjectLib
         [DllImport("opengl32.dll")]
         internal static extern void glGetIntegerv(uint pname, int[] params_notkeyword);
         [DllImport("opengl32.dll")]
+        internal static extern void glGetIntegerv(int pname, out int @params);
+        [DllImport("opengl32.dll")]
+        internal static extern void glGetIntegerv(int pname, int* params_notkeyword);
+
+        [DllImport("opengl32.dll")]
         internal static extern void glGetLightfv(uint light, uint pname, float[] params_notkeyword);
         [DllImport("opengl32.dll")]
         internal static extern void glGetLightiv(uint light, uint pname, int[] params_notkeyword);
@@ -1359,7 +1364,7 @@ namespace AvalonInjectLib
         [DllImport("opengl32.dll")]
         internal static extern void glInterleavedArrays(uint format, int stride, int[] pointer);
         [DllImport("opengl32.dll")]
-        internal static extern byte glIsEnabled(uint cap);
+        internal static extern bool glIsEnabled(uint cap);
         [DllImport("opengl32.dll")]
         internal static extern byte glIsList(uint list);
         [DllImport("opengl32.dll")]
@@ -1919,6 +1924,8 @@ namespace AvalonInjectLib
         internal const int GL_PROJECTION_MATRIX = 0x0BA7;
         internal const int GL_TEXTURE_MATRIX = 0x0BA8;
         internal const int GL_COLOR_MATRIX = 0x80B1;
+        internal const int GL_BLEND_SRC = 0x0BE1;
+        internal const int GL_BLEND_DST = 0x0BE0;
 
         internal static bool MakeContextCurrent(IntPtr hdc, IntPtr hglrc)
         {

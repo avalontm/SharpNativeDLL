@@ -50,7 +50,7 @@ namespace AvalonInjectLib
 
             // Cargar fuente por defecto embebida
             byte[] defaultFontData = EmbeddedResourceLoader.LoadResource("AvalonInjectLib.InputMono-Medium.ttf");
-            _defaultFont = LoadFromMemory(defaultFontData, 10, "Default");
+            _defaultFont = LoadFromMemory(defaultFontData, 14, "Default");
 
             _isInitialized = true;
         }

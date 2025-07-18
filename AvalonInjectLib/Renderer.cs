@@ -226,7 +226,15 @@ namespace AvalonInjectLib
 
         public static void DrawTriangle(Vector2 vector21, Vector2 vector22, Vector2 vector23, UIFramework.Color color)
         {
-            OpenGLHook.DrawTriangle(vector21, vector22, vector23, color);
+            var apiColor = new Structs.Color
+            {
+                R = color.R / 255f,
+                G = color.G / 255f,
+                B = color.B / 255f,
+                A = color.A / 255f
+            };
+
+            OpenGLHook.DrawTriangle(vector21, vector22, vector23, apiColor);
         }
 
         public static void PushClip(Rect contentRect)

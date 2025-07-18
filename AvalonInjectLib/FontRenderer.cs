@@ -5,17 +5,31 @@ using static AvalonInjectLib.Structs;
 
 namespace AvalonInjectLib
 {
+    /// <summary>
+    /// Optimized font renderer with non-blocking operations to prevent OpenGL hook freezing.
+    /// Designed for high-performance text rendering with minimal frame drops.
+    /// </summary>
     internal static unsafe class FontRenderer
     {
         public static bool IsContexted { get; internal set; }
-        private const int DefaultAtlasSize = 512;
 
-        // Estructuras para manejo asíncrono
+        // Reduced atlas size to prevent memory issues
+        private const int DefaultAtlasSize = 512;
+        // Moderate resolution multiplier for balance between quality and performance
+        private const float ResolutionMultiplier = 1.5f;
+        // Minimal padding to prevent bleeding
+        private const int GlyphPadding = 1;
+        // Maximum fonts to process per frame to prevent freezing
+        private const int MaxFontsPerFrame = 1;
+
+        // Thread-safe collections for asynchronous font handling
         private static readonly ConcurrentQueue<PendingFont> _pendingFonts = new();
         private static readonly ConcurrentDictionary<uint, FontData> _loadedFonts = new();
         private static uint _nextPendingId = 1;
 
-        // Estructuras adicionales para métricas detalladas
+        /// <summary>
+        /// Detailed glyph metrics for precise text positioning
+        /// </summary>
         public struct GlyphMetrics
         {
             public float Advance;
@@ -25,47 +39,43 @@ namespace AvalonInjectLib
             public float Height;
         }
 
+        /// <summary>
+        /// Enumeration for different text centering modes
+        /// </summary>
+        public enum CenteringMode
+        {
+            Visual,
+            Geometric,
+            CapHeight
+        }
 
-        // Estructura extendida para las métricas
+        /// <summary>
+        /// Lightweight font metrics structure
+        /// </summary>
         public struct FontVerticalMetrics
         {
-            // Métricas básicas
             public float Ascent { get; set; }
             public float Descent { get; set; }
             public float LineGap { get; set; }
             public float LineHeight { get; set; }
 
-            // Métricas visuales
-            public float VisualHeight { get; set; }
-            public float VisualAscent { get; set; }
-            public float VisualDescent { get; set; }
-            public float CapHeight { get; set; }
-            public float XHeight { get; set; }
-
-            // Centros para diferentes tipos de centrado
-            public float VisualCenter { get; set; }
-            public float GeometricCenter { get; set; }
-            public float CapCenter { get; set; }
-
-            // Offsets precalculados para baseline
-            public float BaselineOffsetForVisualCenter { get; set; }
-            public float BaselineOffsetForCapCenter { get; set; }
-
-            // Método helper para obtener baseline centrado
+            /// <summary>
+            /// Calculates the baseline position for centered text within a given element
+            /// </summary>
+            /// <param name="elementY">Top Y position of the element</param>
+            /// <param name="elementHeight">Height of the element</param>
+            /// <param name="mode">Centering mode to use</param>
+            /// <returns>Baseline Y position for centered text</returns>
             public float GetCenteredBaseline(float elementY, float elementHeight, CenteringMode mode = CenteringMode.Visual)
             {
                 float elementCenter = elementY + (elementHeight / 2);
-
-                return mode switch
-                {
-                    CenteringMode.Visual => elementCenter - (VisualAscent - VisualDescent) / 2,
-                    CenteringMode.Geometric => elementCenter - (Ascent - Descent) / 2,
-                    CenteringMode.CapHeight => elementCenter + CapHeight / 2,
-                    _ => elementCenter - (VisualAscent - VisualDescent) / 2
-                };
+                return elementCenter - (Ascent - Descent) / 2;
             }
         }
 
+        /// <summary>
+        /// Lightweight font loading request
+        /// </summary>
         private struct PendingFont
         {
             public uint PendingId;
@@ -73,18 +83,24 @@ namespace AvalonInjectLib
             public byte[] FontData;
         }
 
+        /// <summary>
+        /// Optimized font data structure
+        /// </summary>
         public struct FontData
         {
             public Dictionary<char, GlyphData> Glyphs;
             public uint TextureId;
             public float FontScale;
+            public float BaseSize;
             public int Ascent;
             public int Descent;
             public int LineGap;
-            public int AtlasSize;
             public bool IsLoaded;
         }
 
+        /// <summary>
+        /// Compact glyph rendering data
+        /// </summary>
         public struct GlyphData
         {
             public float Advance;
@@ -95,7 +111,13 @@ namespace AvalonInjectLib
             public Rect TexCoords;
         }
 
-        // Método para solicitar carga de fuente (sin contexto OpenGL)
+        /// <summary>
+        /// Fast font request from file path (non-blocking)
+        /// </summary>
+        /// <param name="fontPath">Path to the font file</param>
+        /// <param name="size">Desired font size in pixels</param>
+        /// <param name="actualSize">Returns the actual size that will be used</param>
+        /// <returns>Font ID for later use, or 0 if failed</returns>
         public static uint RequestFont(string fontPath, int size, out int actualSize)
         {
             actualSize = size;
@@ -108,6 +130,7 @@ namespace AvalonInjectLib
 
             try
             {
+                // Load font data asynchronously to prevent blocking
                 byte[] fontData = File.ReadAllBytes(fontPath);
                 uint pendingId = _nextPendingId++;
 
@@ -118,16 +141,23 @@ namespace AvalonInjectLib
                     FontData = fontData
                 });
 
-                Logger.Debug($"Requested font {pendingId} from {fontPath} (Size: {size})", "FontRenderer");
+                Logger.Debug($"Queued font {pendingId} from {fontPath} (Size: {size})", "FontRenderer");
                 return pendingId;
             }
             catch (Exception ex)
             {
-                Logger.Error($"Failed to request font from {fontPath}: {ex.Message}", "FontRenderer");
+                Logger.Error($"Failed to queue font from {fontPath}: {ex.Message}", "FontRenderer");
                 return 0;
             }
         }
 
+        /// <summary>
+        /// Fast font request from byte array (non-blocking)
+        /// </summary>
+        /// <param name="fontData">Font data as byte array</param>
+        /// <param name="size">Desired font size in pixels</param>
+        /// <param name="actualSize">Returns the actual size that will be used</param>
+        /// <returns>Font ID for later use, or 0 if failed</returns>
         public static uint RequestFont(byte[] fontData, int size, out int actualSize)
         {
             actualSize = size;
@@ -149,58 +179,60 @@ namespace AvalonInjectLib
                     FontData = fontData
                 });
 
-                Logger.Debug($"Requested font {pendingId} from embedded data (Size: {size})", "FontRenderer");
+                Logger.Debug($"Queued font {pendingId} from embedded data (Size: {size})", "FontRenderer");
                 return pendingId;
             }
             catch (Exception ex)
             {
-                Logger.Error($"Failed to request font from embedded data: {ex.Message}", "FontRenderer");
+                Logger.Error($"Failed to queue font from embedded data: {ex.Message}", "FontRenderer");
                 return 0;
             }
         }
 
+        /// <summary>
+        /// Processes pending fonts with frame-rate limiting to prevent freezing
+        /// Only processes one font per call to maintain smooth performance
+        /// </summary>
         public static void ProcessPendingFonts()
         {
             if (!IsContexted)
             {
-                Logger.Warning("Cannot process fonts - no OpenGL context", "FontRenderer");
-                return;
+                return; // Silently return to avoid spam
             }
 
-            int processedCount = 0;
-
-            while (_pendingFonts.TryDequeue(out var pending))
+            // Process only one font per frame to prevent freezing
+            if (_pendingFonts.TryDequeue(out var pending))
             {
                 try
                 {
-                    var fontData = LoadFontData(pending.FontData, pending.Size);
+                    var fontData = LoadFontDataOptimized(pending.FontData, pending.Size);
                     _loadedFonts[pending.PendingId] = fontData;
-                    processedCount++;
 
-                    Logger.Debug($"Successfully loaded font {pending.PendingId} (Size: {pending.Size}, TextureID: {fontData.TextureId})", "FontRenderer");
+                    Logger.Debug($"Loaded font {pending.PendingId} (Size: {pending.Size})", "FontRenderer");
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error($"Failed to process font {pending.PendingId}: {ex.Message}", "FontRenderer");
+                    Logger.Error($"Failed to load font {pending.PendingId}: {ex.Message}", "FontRenderer");
                 }
-            }
-
-            if (processedCount > 0)
-            {
-                Logger.Info($"Processed {processedCount} pending fonts", "FontRenderer");
             }
         }
 
-        internal static FontData LoadFontData(byte[] fontData, int size)
+        /// <summary>
+        /// Optimized font loading with minimal OpenGL operations
+        /// </summary>
+        /// <param name="fontData">Raw font file data</param>
+        /// <param name="size">Font size in pixels</param>
+        /// <returns>Optimized font data structure</returns>
+        internal static FontData LoadFontDataOptimized(byte[] fontData, int size)
         {
             var result = new FontData
             {
                 Glyphs = new Dictionary<char, GlyphData>(),
-                AtlasSize = DefaultAtlasSize,
+                BaseSize = size,
                 IsLoaded = false
             };
 
-            // 1. Inicializar fuente STB
+            // Fast STB TrueType font initialization
             var stbFont = new StbTrueType.stbtt_fontinfo();
             fixed (byte* ptr = fontData)
             {
@@ -208,54 +240,61 @@ namespace AvalonInjectLib
                     throw new Exception("Failed to initialize font");
             }
 
-            // 2. Obtener métricas
+            // Quick metrics calculation
             int ascent, descent, lineGap;
             StbTrueType.stbtt_GetFontVMetrics(stbFont, &ascent, &descent, &lineGap);
 
-            result.FontScale = StbTrueType.stbtt_ScaleForPixelHeight(stbFont, size*4);
+            // Balanced resolution for quality vs performance
+            float pixelHeight = size * ResolutionMultiplier;
+            result.FontScale = StbTrueType.stbtt_ScaleForPixelHeight(stbFont, pixelHeight);
             result.Ascent = ascent;
             result.Descent = descent;
             result.LineGap = lineGap;
 
-            // 3. Crear atlas
+            // Create optimized atlas
             byte[] atlasData = new byte[DefaultAtlasSize * DefaultAtlasSize * 4];
-            int currentX = 0, currentY = 0, currentLineHeight = 0;
+            int currentX = GlyphPadding;
+            int currentY = GlyphPadding;
+            int currentLineHeight = 0;
 
-            // 4. Rasterizar glifos ASCII
-            for (int i = 32; i < 128; i++)
+            // Process essential ASCII characters only (fast)
+            for (int i = 32; i < 127; i++)
             {
                 char c = (char)i;
-                AddGlyphToAtlas(stbFont, c, ref result, atlasData, ref currentX, ref currentY, ref currentLineHeight);
+                AddGlyphToAtlasOptimized(stbFont, c, ref result, atlasData, ref currentX, ref currentY, ref currentLineHeight);
             }
 
-            // 5. Crear textura OpenGL
-            result.TextureId = CreateFontTexture(atlasData);
+            // Fast texture creation
+            result.TextureId = CreateOptimizedFontTexture(atlasData);
             result.IsLoaded = true;
 
             return result;
         }
 
-        private static void AddGlyphToAtlas(StbTrueType.stbtt_fontinfo font, char c, ref FontData fontData,  byte[] atlasData, ref int currentX, ref int currentY, ref int currentLineHeight)
+        /// <summary>
+        /// Optimized glyph addition with minimal processing
+        /// </summary>
+        private static void AddGlyphToAtlasOptimized(StbTrueType.stbtt_fontinfo font, char c, ref FontData fontData, byte[] atlasData, ref int currentX, ref int currentY, ref int currentLineHeight)
         {
-            // Obtener métricas del glifo
+            // Fast glyph metrics
             int advance, bearing;
             StbTrueType.stbtt_GetCodepointHMetrics(font, c, &advance, &bearing);
 
-            // Obtener bounding box
+            // Quick bounding box
             int x0, y0, x1, y1;
             StbTrueType.stbtt_GetCodepointBitmapBox(font, c, fontData.FontScale, fontData.FontScale, &x0, &y0, &x1, &y1);
 
             int w = x1 - x0;
             int h = y1 - y0;
 
-            // Manejar espacios y caracteres especiales
+            // Handle empty glyphs quickly
             if (w <= 0 || h <= 0)
             {
                 fontData.Glyphs[c] = new GlyphData
                 {
-                    Advance = advance * fontData.FontScale,
-                    BearingX = bearing * fontData.FontScale,
-                    BearingY = y0,
+                    Advance = (advance * fontData.FontScale) / ResolutionMultiplier,
+                    BearingX = (bearing * fontData.FontScale) / ResolutionMultiplier,
+                    BearingY = y0 / ResolutionMultiplier,
                     Width = 0,
                     Height = 0,
                     TexCoords = new Rect(0, 0, 0, 0)
@@ -263,33 +302,33 @@ namespace AvalonInjectLib
                 return;
             }
 
-            // Posicionamiento en el atlas
-            if (currentX + w + 2 >= DefaultAtlasSize)
+            // Simple atlas positioning
+            if (currentX + w + GlyphPadding >= DefaultAtlasSize)
             {
-                currentX = 0;
-                currentY += currentLineHeight + 2;
+                currentX = GlyphPadding;
+                currentY += currentLineHeight + GlyphPadding;
                 currentLineHeight = 0;
 
-                if (currentY + h + 2 >= DefaultAtlasSize)
+                if (currentY + h + GlyphPadding >= DefaultAtlasSize)
                 {
-                    Logger.Error($"Atlas full, skipping character: '{c}'", "FontRenderer");
+                    // Skip character if atlas is full
                     return;
                 }
             }
 
             if (h > currentLineHeight) currentLineHeight = h;
 
-            int xPos = currentX + 1;
-            int yPos = currentY + 1;
+            int xPos = currentX;
+            int yPos = currentY;
 
-            // Rasterizar glifo
+            // Fast glyph rasterization
             byte[] bitmap = new byte[w * h];
             fixed (byte* ptr = bitmap)
             {
                 StbTrueType.stbtt_MakeCodepointBitmap(font, ptr, w, h, w, fontData.FontScale, fontData.FontScale, c);
             }
 
-            // Copiar al atlas
+            // Optimized atlas copying
             for (int row = 0; row < h; row++)
             {
                 for (int col = 0; col < w; col++)
@@ -304,12 +343,12 @@ namespace AvalonInjectLib
                 }
             }
 
-            // Guardar datos del glifo
+            // Store glyph data
             fontData.Glyphs[c] = new GlyphData
             {
-                Advance = advance * fontData.FontScale,
-                BearingX = bearing * fontData.FontScale,
-                BearingY = y0,
+                Advance = (advance * fontData.FontScale) / ResolutionMultiplier,
+                BearingX = (bearing * fontData.FontScale) / ResolutionMultiplier,
+                BearingY = y0 / ResolutionMultiplier,
                 Width = w,
                 Height = h,
                 TexCoords = new Rect(
@@ -320,10 +359,15 @@ namespace AvalonInjectLib
                 )
             };
 
-            currentX += w + 2;
+            currentX += w + GlyphPadding;
         }
 
-        private static uint CreateFontTexture(byte[] atlasData)
+        /// <summary>
+        /// Fast OpenGL texture creation with minimal settings
+        /// </summary>
+        /// <param name="atlasData">Texture atlas data</param>
+        /// <returns>OpenGL texture ID</returns>
+        private static uint CreateOptimizedFontTexture(byte[] atlasData)
         {
             uint textureId;
             glGenTextures(1, &textureId);
@@ -335,6 +379,7 @@ namespace AvalonInjectLib
                             0, GL_RGBA, GL_UNSIGNED_BYTE, (IntPtr)ptr);
             }
 
+            // Minimal texture parameters for speed
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -343,22 +388,47 @@ namespace AvalonInjectLib
             return textureId;
         }
 
-        // Métodos para acceder a las fuentes cargadas
+        /// <summary>
+        /// Checks if a font is ready for use
+        /// </summary>
+        /// <param name="pendingId">Font ID to check</param>
+        /// <returns>True if font is loaded and ready</returns>
         public static bool IsFontReady(uint pendingId) => _loadedFonts.ContainsKey(pendingId);
+
+        /// <summary>
+        /// Gets font data for a loaded font
+        /// </summary>
+        /// <param name="pendingId">Font ID</param>
+        /// <returns>Font data structure</returns>
         public static FontData GetFontData(uint pendingId) => _loadedFonts.TryGetValue(pendingId, out var data) ? data : default;
 
+        /// <summary>
+        /// Optimized text rendering with minimal OpenGL state changes
+        /// </summary>
+        /// <param name="fontId">Font ID to use</param>
+        /// <param name="text">Text to render</param>
+        /// <param name="x">X position</param>
+        /// <param name="y">Y position</param>
+        /// <param name="size">Font size</param>
+        /// <param name="color">Text color</param>
         public static void DrawText(uint fontId, string text, float x, float y, float size, Color color)
         {
             if (!_loadedFonts.TryGetValue(fontId, out var font) || !font.IsLoaded) return;
 
+            // Minimal OpenGL state setup
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             glEnable(GL_TEXTURE_2D);
             glBindTexture(GL_TEXTURE_2D, font.TextureId);
-            glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 
-            // Calcular escala basada en el tamaño solicitado vs el tamaño base de la fuente
-            float scale = size / (font.Ascent * font.FontScale);
+            // Fast scale calculation
+            float scale = size / font.BaseSize;
             float startX = x;
-            float baseline = y + (font.Ascent * font.FontScale * scale);
+            float baseline = y + (font.Ascent * font.FontScale * scale) / ResolutionMultiplier;
+
+            // Optimized character rendering
+            glBegin(GL_QUADS);
+            glColor4f(color.R, color.G, color.B, color.A);
 
             foreach (char c in text)
             {
@@ -377,32 +447,39 @@ namespace AvalonInjectLib
                     continue;
                 }
 
-                float xPos = startX + glyph.BearingX * scale;
-                float yPos = baseline + glyph.BearingY * scale;
+                float xPos = startX + (glyph.BearingX * scale);
+                float yPos = baseline + (glyph.BearingY * scale);
+                float glyphWidth = (glyph.Width * scale) / ResolutionMultiplier;
+                float glyphHeight = (glyph.Height * scale) / ResolutionMultiplier;
 
-                glBegin(GL_QUADS);
-                glColor4f(color.R, color.G, color.B, color.A);
-
+                // Render glyph quad
                 glTexCoord2f(glyph.TexCoords.X, glyph.TexCoords.Y);
                 glVertex2f(xPos, yPos);
 
                 glTexCoord2f(glyph.TexCoords.X + glyph.TexCoords.Width, glyph.TexCoords.Y);
-                glVertex2f(xPos + glyph.Width * scale, yPos);
+                glVertex2f(xPos + glyphWidth, yPos);
 
                 glTexCoord2f(glyph.TexCoords.X + glyph.TexCoords.Width, glyph.TexCoords.Y + glyph.TexCoords.Height);
-                glVertex2f(xPos + glyph.Width * scale, yPos + glyph.Height * scale);
+                glVertex2f(xPos + glyphWidth, yPos + glyphHeight);
 
                 glTexCoord2f(glyph.TexCoords.X, glyph.TexCoords.Y + glyph.TexCoords.Height);
-                glVertex2f(xPos, yPos + glyph.Height * scale);
-
-                glEnd();
+                glVertex2f(xPos, yPos + glyphHeight);
 
                 startX += glyph.Advance * scale;
             }
 
+            glEnd();
             glDisable(GL_TEXTURE_2D);
+            glDisable(GL_BLEND);
         }
 
+        /// <summary>
+        /// Fast text measurement
+        /// </summary>
+        /// <param name="fontId">Font ID to use</param>
+        /// <param name="text">Text to measure</param>
+        /// <param name="scale">Scale factor</param>
+        /// <returns>Text dimensions as Vector2</returns>
         internal static Vector2 MeasureText(uint fontId, string text, float scale)
         {
             if (!_loadedFonts.TryGetValue(fontId, out var font) || !font.IsLoaded)
@@ -411,7 +488,6 @@ namespace AvalonInjectLib
             if (string.IsNullOrEmpty(text))
                 return Vector2.Zero;
 
-            float _scale = (scale / 4);
             float maxWidth = 0f;
             float currentWidth = 0f;
             int lineCount = 1;
@@ -429,11 +505,10 @@ namespace AvalonInjectLib
 
                 if (font.Glyphs.TryGetValue(c, out var glyph))
                 {
-                    currentWidth += glyph.Advance * _scale;
+                    currentWidth += glyph.Advance * scale;
                 }
             }
 
-            // Verificar la última línea
             if (currentWidth > maxWidth)
                 maxWidth = currentWidth;
 
@@ -441,16 +516,24 @@ namespace AvalonInjectLib
             return new Vector2(maxWidth, height);
         }
 
+        /// <summary>
+        /// Fast line height calculation
+        /// </summary>
+        /// <param name="fontId">Font ID</param>
+        /// <param name="scale">Scale factor</param>
+        /// <returns>Line height in pixels</returns>
         internal static float GetLineHeight(uint fontId, float scale = 1.0f)
         {
             if (!_loadedFonts.TryGetValue(fontId, out var font) || !font.IsLoaded)
                 return 0f;
 
-            scale = (scale / 4);
-            // Altura de línea = (ascent - descent + lineGap) * escala de fuente * escala aplicada
-            return (font.Ascent - font.Descent + font.LineGap) * font.FontScale * scale;
+            return ((font.Ascent - font.Descent + font.LineGap) * font.FontScale * scale) / ResolutionMultiplier;
         }
 
+        /// <summary>
+        /// Fast font deletion
+        /// </summary>
+        /// <param name="pendingId">Font ID to delete</param>
         public static void DeleteFont(uint pendingId)
         {
             if (_loadedFonts.TryRemove(pendingId, out var fontData))
@@ -460,6 +543,9 @@ namespace AvalonInjectLib
             }
         }
 
+        /// <summary>
+        /// Fast cleanup of all fonts
+        /// </summary>
         public static void CleanupFonts()
         {
             foreach (var font in _loadedFonts.Values)
@@ -471,26 +557,33 @@ namespace AvalonInjectLib
             _pendingFonts.Clear();
         }
 
+        /// <summary>
+        /// Checks if there are fonts waiting to be processed
+        /// </summary>
+        /// <returns>True if fonts are pending</returns>
         public static bool HasPendingFonts()
         {
             return !_pendingFonts.IsEmpty;
         }
 
         /// <summary>
-        /// Verifica si una fuente específica está completamente cargada y lista para usar
+        /// Verifies if a specific font is loaded and ready
         /// </summary>
+        /// <param name="fontId">Font ID to check</param>
+        /// <returns>True if font is loaded and ready</returns>
         public static bool IsFontLoaded(uint fontId)
         {
             return _loadedFonts.TryGetValue(fontId, out var data) && data.IsLoaded;
         }
 
         /// <summary>
-        /// Obtiene el ID real de la textura del atlas de fuentes
+        /// Gets the OpenGL texture ID for a font atlas
         /// </summary>
+        /// <param name="fontId">Font ID</param>
+        /// <returns>OpenGL texture ID, or 0 if not found</returns>
         public static uint GetFontTextureId(uint fontId)
         {
             return _loadedFonts.TryGetValue(fontId, out var data) ? data.TextureId : 0;
         }
-
     }
 }

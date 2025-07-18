@@ -18,6 +18,43 @@ namespace AvalonInjectLib
 
         public static bool IsRendering => _isRendering;
 
+        /// <summary>
+        /// Intenta iniciar un frame de renderizado de forma no bloqueante
+        /// </summary>
+        /// <param name="renderScope">Scope para el renderizado que debe ser disposed al finalizar</param>
+        /// <returns>true si se pudo adquirir el lock, false si no</returns>
+        public static bool TryBeginRender(out IDisposable renderScope)
+        {
+            renderScope = null;
+            var lockTaken = false;
+
+            try
+            {
+                Monitor.TryEnter(MainLock, SyncTimeout, ref lockTaken);
+                if (!lockTaken)
+                {
+                    return false;
+                }
+
+                _isRendering = true;
+                renderScope = new RenderLock();
+                return true;
+            }
+            catch
+            {
+                if (lockTaken)
+                {
+                    Monitor.Exit(MainLock);
+                }
+                renderScope?.Dispose();
+                renderScope = null;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Versión bloqueante del BeginRender para compatibilidad
+        /// </summary>
         public static IDisposable BeginRender()
         {
             var lockTaken = false;
@@ -40,6 +77,9 @@ namespace AvalonInjectLib
             }
         }
 
+        /// <summary>
+        /// Inicia una operación remota de forma asíncrona
+        /// </summary>
         public static async Task<IDisposable> BeginRemoteOperationAsync()
         {
             if (!await _remoteCallSemaphore.WaitAsync(SyncTimeout))
@@ -72,23 +112,81 @@ namespace AvalonInjectLib
             }
         }
 
+        /// <summary>
+        /// Versión sincrónica para operaciones remotas rápidas
+        /// </summary>
+        public static bool TryBeginRemoteOperation(out IDisposable remoteScope)
+        {
+            remoteScope = null;
+
+            if (!_remoteCallSemaphore.Wait(SyncTimeout))
+            {
+                return false;
+            }
+
+            try
+            {
+                // Verificar si estamos renderizando
+                if (_isRendering)
+                {
+                    return false;
+                }
+
+                remoteScope = new RemoteOperationLock();
+                return true;
+            }
+            catch
+            {
+                _remoteCallSemaphore.Release();
+                remoteScope?.Dispose();
+                remoteScope = null;
+                return false;
+            }
+        }
+
         private class RenderLock : IDisposable
         {
+            private bool _disposed = false;
+
             public void Dispose()
             {
-                lock (MainLock)
+                if (!_disposed)
                 {
-                    _isRendering = false;
-                    Monitor.PulseAll(MainLock);
+                    _disposed = true;
+                    try
+                    {
+                        lock (MainLock)
+                        {
+                            _isRendering = false;
+                            Monitor.PulseAll(MainLock);
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore disposal errors
+                    }
                 }
             }
         }
 
         private class RemoteOperationLock : IDisposable
         {
+            private bool _disposed = false;
+
             public void Dispose()
             {
-                _remoteCallSemaphore.Release();
+                if (!_disposed)
+                {
+                    _disposed = true;
+                    try
+                    {
+                        _remoteCallSemaphore.Release();
+                    }
+                    catch
+                    {
+                        // Ignore disposal errors
+                    }
+                }
             }
         }
     }
