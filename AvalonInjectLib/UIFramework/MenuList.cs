@@ -801,6 +801,13 @@ namespace AvalonInjectLib.UIFramework
             _activeSubMenus.Clear();
         }
 
+
+        public void Clean()
+        {
+            ClearItems();
+            CleanupSubMenus();
+        }
+
         public int ItemCount => _items.Count;
         public bool HasItems => _items.Count > 0;
     }

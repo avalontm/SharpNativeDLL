@@ -103,5 +103,10 @@ namespace AvalonInjectLib
         {
             throw new NotImplementedException();
         }
+
+        internal static void RemoveRenderCallback(Action render)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

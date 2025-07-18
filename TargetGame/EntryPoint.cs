@@ -10,6 +10,7 @@ namespace TargetGame
         static AvalonEngine Engine { set; get; } = new AvalonEngine();
         public static MoonSharpScriptLoader _luaLoader { private set; get; }
         static MenuSystem menuSystem = new MenuSystem();
+
         // Constantes
         const uint DLL_PROCESS_ATTACH = 1;
 
@@ -50,10 +51,10 @@ namespace TargetGame
 
         private static void InitializeScripts()
         {
-            _luaLoader = new MoonSharpScriptLoader();
+            _luaLoader = new MoonSharpScriptLoader(Engine);
 
             // Carga y inicializa todos los scripts Lua del directorio "Scripts"
-            _luaLoader.LoadScripts("Scripts", Engine);
+            _luaLoader.LoadScripts("Scripts");
         }
 
 
@@ -99,7 +100,7 @@ namespace TargetGame
         {
             while (true)
             {
-                LibManager.Sleep(10);
+                LibManager.Sleep(100);
             }
         }
 

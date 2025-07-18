@@ -58,6 +58,7 @@ namespace AvalonInjectLib
 
         }
 
+
         public static void SetRenderCallback(Action render)
         {
             if (CurrentAPI == GraphicsAPI.OpenGL)
@@ -71,6 +72,18 @@ namespace AvalonInjectLib
 
         }
 
+        public static void RemoveRenderCallback(Action render)
+        {
+            if (CurrentAPI == GraphicsAPI.OpenGL)
+            {
+                OpenGLHook.RemoveRenderCallback(render);
+            }
+            else
+            {
+                DirectXHook.RemoveRenderCallback(render);
+            }
+
+        }
         public static void DrawRect(float x, float y, float w, float h, UIFramework.Color color)
         {
             var apiColor = new Structs.Color

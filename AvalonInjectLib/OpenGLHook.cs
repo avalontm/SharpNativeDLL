@@ -35,6 +35,12 @@ namespace AvalonInjectLib
         private static int _screenWidth = 1920;
         private static int _screenHeight = 1080;
 
+        // NUEVO: Control de estado de recarga
+        private static volatile bool _isReloading = false;
+        private static volatile bool _skipNextFrames = false;
+        private static int _skipFrameCount = 0;
+        private static readonly object _reloadStateLock = new();
+
         // Callbacks thread-safe
         private static readonly ConcurrentBag<Action> _renderCallbacks = new();
         private static readonly object _callbackLock = new();
@@ -52,6 +58,67 @@ namespace AvalonInjectLib
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate bool WglSwapBuffersDelegate(IntPtr hdc);
+        #endregion
+
+        #region RELOAD STATE MANAGEMENT
+        /// <summary>
+        /// Indica al hook que se está iniciando una recarga de scripts
+        /// </summary>
+        internal static void BeginReload()
+        {
+            lock (_reloadStateLock)
+            {
+                _isReloading = true;
+                _skipNextFrames = true;
+                _skipFrameCount = 0;
+            }
+        }
+
+        /// <summary>
+        /// Indica al hook que la recarga de scripts ha terminado
+        /// </summary>
+        internal static void EndReload()
+        {
+            lock (_reloadStateLock)
+            {
+                _isReloading = false;
+                // Seguir saltando algunos frames para estabilizar
+                _skipNextFrames = true;
+                _skipFrameCount = 0;
+            }
+        }
+
+        /// <summary>
+        /// Verifica si está seguro renderizar callbacks
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool IsSafeToRender()
+        {
+            lock (_reloadStateLock)
+            {
+                // Si está recargando, no renderizar
+                if (_isReloading) return false;
+
+                // Si acabamos de terminar la recarga, saltar algunos frames
+                if (_skipNextFrames)
+                {
+                    _skipFrameCount++;
+                    if (_skipFrameCount >= 3) // Saltar 3 frames después de la recarga
+                    {
+                        _skipNextFrames = false;
+                        _skipFrameCount = 0;
+                    }
+                    return false;
+                }
+
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Propiedad para verificar el estado de recarga desde otros componentes
+        /// </summary>
+        internal static bool IsReloading => _isReloading;
         #endregion
 
         #region OPENGL STATE MANAGEMENT
@@ -155,6 +222,9 @@ namespace AvalonInjectLib
         {
             if (_disposing || _renderCallbacks.IsEmpty) return;
 
+            // CRÍTICO: Verificar si es seguro renderizar
+            if (!IsSafeToRender()) return;
+
             // Actualizar cache si es necesario
             if (_callbacksCacheDirty)
             {
@@ -176,6 +246,9 @@ namespace AvalonInjectLib
             {
                 try
                 {
+                    // Verificar nuevamente antes de cada callback
+                    if (!IsSafeToRender()) break;
+
                     callback();
                 }
                 catch (Exception ex)
@@ -337,7 +410,7 @@ namespace AvalonInjectLib
         }
         #endregion
 
-        #region HOOK FUNCTION - ANTI-FLICKER SOLUTION
+        #region HOOK FUNCTION
         [UnmanagedCallersOnly]
         private static bool HookedWglSwapBuffers(IntPtr hdc)
         {
@@ -356,8 +429,11 @@ namespace AvalonInjectLib
 
                 using (renderScope)
                 {
-                    // Renderizar overlay SIN llamar SwapBuffers aún
-                    RenderOverlayStable();
+                    // Renderizar overlay solo si es seguro
+                    if (IsSafeToRender())
+                    {
+                        RenderOverlayStable();
+                    }
                 }
 
                 // DESPUÉS del renderizado, hacer swap una sola vez
@@ -409,15 +485,18 @@ namespace AvalonInjectLib
                 // Configurar para renderizado 2D estable
                 ConfigureOverlayRendering();
 
-                // Marcar contexto como disponible
-                TextureRenderer.IsContexted = true;
-                FontRenderer.IsContexted = true;
+                // Marcar contexto como disponible solo si es seguro
+                if (IsSafeToRender())
+                {
+                    TextureRenderer.IsContexted = true;
+                    FontRenderer.IsContexted = true;
 
-                // Procesar contenido pendiente (limitado por frame)
-                ProcessPendingContent();
+                    // Procesar contenido pendiente (limitado por frame)
+                    ProcessPendingContent();
 
-                // Ejecutar callbacks de renderizado
-                ExecuteRenderCallbacks();
+                    // Ejecutar callbacks de renderizado
+                    ExecuteRenderCallbacks();
+                }
 
                 // Asegurar que todo se renderice al back buffer
                 OpenGLInterop.glFlush();
@@ -463,9 +542,12 @@ namespace AvalonInjectLib
 
         private static void ProcessPendingContent()
         {
+            // Solo procesar si es seguro
+            if (!IsSafeToRender()) return;
+
             // Procesar texturas pendientes (máximo 3 por frame)
             int textureCount = 0;
-            while (TextureRenderer.HasPendingTextures() && textureCount < 3)
+            while (TextureRenderer.HasPendingTextures() && textureCount < 3 && IsSafeToRender())
             {
                 TextureRenderer.ProcessPendingTextures();
                 textureCount++;
@@ -473,7 +555,7 @@ namespace AvalonInjectLib
 
             // Procesar fuentes pendientes (máximo 2 por frame)
             int fontCount = 0;
-            while (FontRenderer.HasPendingFonts() && fontCount < 2)
+            while (FontRenderer.HasPendingFonts() && fontCount < 2 && IsSafeToRender())
             {
                 FontRenderer.ProcessPendingFonts();
                 fontCount++;
@@ -485,7 +567,7 @@ namespace AvalonInjectLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void DrawLine(Vector2 start, Vector2 end, float thickness, Color color)
         {
-            if (!_initialized) return;
+            if (!_initialized || !IsSafeToRender()) return;
 
             OpenGLInterop.glLineWidth(thickness);
             OpenGLInterop.glBegin(GL_LINES);
@@ -498,7 +580,7 @@ namespace AvalonInjectLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void DrawBox(float x, float y, float width, float height, float thickness, Color color)
         {
-            if (!_initialized) return;
+            if (!_initialized || !IsSafeToRender()) return;
 
             OpenGLInterop.glLineWidth(thickness);
             OpenGLInterop.glBegin(GL_LINE_LOOP);
@@ -513,7 +595,7 @@ namespace AvalonInjectLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void DrawFilledBox(float x, float y, float width, float height, Color color)
         {
-            if (!_initialized) return;
+            if (!_initialized || !IsSafeToRender()) return;
 
             OpenGLInterop.glBegin(GL_QUADS);
             OpenGLInterop.glColor4f(color.R, color.G, color.B, color.A);
@@ -527,7 +609,7 @@ namespace AvalonInjectLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void DrawFilledCircle(Vector2 center, float radius, Color color)
         {
-            if (!_initialized || radius <= 0) return;
+            if (!_initialized || !IsSafeToRender() || radius <= 0) return;
 
             // Optimización: segmentos basados en tamaño
             int segments = radius switch
@@ -558,7 +640,7 @@ namespace AvalonInjectLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void DrawTriangle(Vector2 v1, Vector2 v2, Vector2 v3, Color color)
         {
-            if (!_initialized) return;
+            if (!_initialized || !IsSafeToRender()) return;
 
             OpenGLInterop.glBegin(GL_TRIANGLES);
             OpenGLInterop.glColor4f(color.R, color.G, color.B, color.A);
@@ -571,7 +653,7 @@ namespace AvalonInjectLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void DrawText(uint fontId, string text, Vector2 position, Color color, float scale = 1f)
         {
-            if (!_initialized || string.IsNullOrEmpty(text)) return;
+            if (!_initialized || !IsSafeToRender() || string.IsNullOrEmpty(text)) return;
             FontRenderer.DrawText(fontId, text, position.X, position.Y, scale, color);
         }
         #endregion
