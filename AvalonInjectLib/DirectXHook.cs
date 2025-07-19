@@ -16,8 +16,9 @@ namespace AvalonInjectLib
         private static IntPtr _context;
         private static IntPtr _vertexBuffer;
 
-        internal static void Initialize(IntPtr swapChain)
+        internal static void Initialize()
         {
+            /*
             // Obtener device y context desde el swapchain
             var vtbl = Marshal.ReadIntPtr(swapChain);
             var getDevice = Marshal.GetDelegateForFunctionPointer<GetDeviceDelegate>(Marshal.ReadIntPtr(vtbl, 8 * sizeof(IntPtr))); // VTBL[8] es GetDevice
@@ -26,6 +27,7 @@ namespace AvalonInjectLib
 
             // Crear vertex buffer
             CreateVertexBuffer();
+            */
         }
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
@@ -104,7 +106,7 @@ namespace AvalonInjectLib
             throw new NotImplementedException();
         }
 
-        internal static void RemoveRenderCallback(Action render)
+        internal static void ClearRenderCallback()
         {
             throw new NotImplementedException();
         }

@@ -1,4 +1,5 @@
 ﻿using AvalonInjectLib.Interfaces;
+
 using MoonSharp.Interpreter;
 
 namespace AvalonInjectLib.Scripting
@@ -42,18 +43,31 @@ namespace AvalonInjectLib.Scripting
             _valueFunc = _script.Globals.Get("change_value");
         }
 
-        public void Initialize(IAvalonEngine engine)
+        public void Initialize()
         {
-            if (_initializeFunc.Type == DataType.Function)
-                _script.Call(_initializeFunc);
+            try
+            {
+                if (IsEnabled)
+                {
+                    if (_initializeFunc.Type == DataType.Function)
+                        _script.Call(_initializeFunc);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Error en Initialize(): {ex.Message}", "MoonSharp");
+            }
         }
 
         public void Update()
         {
             try
             {
-                if (_updateFunc != null && _updateFunc.Type == DataType.Function)
-                    _script.Call(_updateFunc);
+                if (IsEnabled)
+                {
+                    if (_updateFunc != null && _updateFunc.Type == DataType.Function)
+                        _script.Call(_updateFunc);
+                }
             }
             catch (Exception ex)
             {
@@ -65,8 +79,11 @@ namespace AvalonInjectLib.Scripting
         {
             try
             {
-                if (_drawFunc != null && _drawFunc.Type == DataType.Function)
-                    _script.Call(_drawFunc);
+                if (IsEnabled)
+                {
+                    if (_drawFunc != null && _drawFunc.Type == DataType.Function)
+                        _script.Call(_drawFunc);
+                }
             }
             catch (Exception ex)
             {
@@ -80,11 +97,12 @@ namespace AvalonInjectLib.Scripting
             {
                 this.Value = value;
 
-                if (_valueFunc != null && _valueFunc.Type == DataType.Function)
+                if (IsEnabled)
                 {
-                    // Convertir el valor a un tipo compatible con Lua
-                    DynValue luaValue = ConvertToLuaValue(value);
-                    _script.Call(_valueFunc, luaValue);
+                    if (_valueFunc != null && _valueFunc.Type == DataType.Function)
+                    {
+                        _script.Call(_valueFunc, Value);
+                    }
                 }
             }
             catch (Exception ex)

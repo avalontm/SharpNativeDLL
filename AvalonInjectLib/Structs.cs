@@ -566,8 +566,8 @@ namespace AvalonInjectLib
         [StructLayout(LayoutKind.Sequential)]
         public struct POINT
         {
-            public int x;
-            public int y;
+            public int X;
+            public int Y;
         }
 
         [StructLayout(LayoutKind.Sequential)]

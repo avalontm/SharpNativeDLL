@@ -20,7 +20,7 @@ namespace AvalonInjectLib.Interfaces
         /// <summary>
         /// Inicializa el script con configuración
         /// </summary>
-        void Initialize(IAvalonEngine engine);
+        void Initialize();
 
         /// <summary>
         /// Numeric value (for Slider)

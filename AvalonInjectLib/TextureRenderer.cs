@@ -7,7 +7,7 @@ using Rectangle = AvalonInjectLib.Structs.Rectangle;
 
 namespace AvalonInjectLib
 {
-    public unsafe static class TextureRenderer
+    internal unsafe static class TextureRenderer
     {
         public static bool IsContexted { get; internal set; }
 
@@ -122,16 +122,16 @@ namespace AvalonInjectLib
                     glBindTexture(GL_TEXTURE_2D, textureId);
 
                     // Configurar parámetros de textura
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, (int)GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, (int)GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, (int)GL_CLAMP_TO_EDGE);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, (int)GL_CLAMP_TO_EDGE);
 
                     // Subir datos de textura
                     fixed (byte* ptr = pendingTexture.ImageData)
                     {
-                        int glFormat = pendingTexture.Format == Graphics.PixelFormat.RGB24 ? GL_RGB : GL_RGBA;
-                        glTexImage2D(GL_TEXTURE_2D, 0, glFormat, pendingTexture.Width, pendingTexture.Height, 0, glFormat, GL_UNSIGNED_BYTE, (IntPtr)ptr);
+                        uint glFormat = pendingTexture.Format == Graphics.PixelFormat.RGB24 ? GL_RGB : GL_RGBA;
+                        glTexImage2D(GL_TEXTURE_2D, 0, (int)glFormat, pendingTexture.Width, pendingTexture.Height, 0, glFormat, GL_UNSIGNED_BYTE, (IntPtr)ptr);
                     }
 
                     if (glGetError() != GL_NO_ERROR)
@@ -166,7 +166,7 @@ namespace AvalonInjectLib
         }
 
         // Método mejorado para el Renderer.cs
-        public static void DrawTexture(Texture2D texture, Rectangle destRect, Rectangle sourceRect, UIFramework.Color tintColor)
+        public static void DrawTexture(Texture2D texture, Rectangle destRect, Rectangle sourceRect, Color tintColor)
         {
             // Verificar si la textura está lista antes de renderizar
             if (texture != null && texture.IsLoaded)
@@ -189,7 +189,7 @@ namespace AvalonInjectLib
         }
 
         // Método existente (mantener para compatibilidad)
-        public static void DrawTexture(Texture2D texture, Rectangle rect, UIFramework.Color tintColor)
+        public static void DrawTexture(Texture2D texture, Rectangle rect, Color tintColor)
         {
             if (texture != null && texture.IsLoaded)
             {
@@ -204,7 +204,7 @@ namespace AvalonInjectLib
 
         // Método mejorado para TextureRenderer
         public static unsafe void DrawTextureWithCoords(uint pendingId, float x, float y, float width, float height,
-            float texLeft, float texTop, float texRight, float texBottom, UIFramework.Color color)
+            float texLeft, float texTop, float texRight, float texBottom, Color color)
         {
             uint textureId = GetRealTextureId(pendingId);
             if (textureId <= 0) return;
@@ -227,7 +227,7 @@ namespace AvalonInjectLib
         }
 
         // Método existente (mantener para compatibilidad)
-        public static unsafe void DrawTexture(uint pendingId, float x, float y, float width, float height, UIFramework.Color color)
+        public static unsafe void DrawTexture(uint pendingId, float x, float y, float width, float height, Color color)
         {
             DrawTextureWithCoords(pendingId, x, y, width, height, 0, 0, 1, 1, color);
         }

@@ -82,7 +82,7 @@ namespace AvalonInjectLib.UIFramework
             // Dibujar borde si está habilitado
             if (ShowBorder)
             {
-                Renderer.DrawRectOutline(absPos.X, absPos.Y, Width, Height, BorderColor, BorderWidth);
+                Renderer.DrawRectOutline(new Rect(absPos.X, absPos.Y, Width, Height), BorderColor, BorderWidth);
             }
 
             float contentY = absPos.Y + BorderWidth;
@@ -176,6 +176,8 @@ namespace AvalonInjectLib.UIFramework
         public override void Update()
         {
             base.Update();
+
+            if (!Visible) return;
 
             // Actualizar scroll máximo
             UpdateMaxScroll();

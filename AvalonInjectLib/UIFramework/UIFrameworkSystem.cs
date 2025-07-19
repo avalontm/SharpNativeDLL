@@ -4,12 +4,9 @@ namespace AvalonInjectLib.UIFramework
     internal static class UIFrameworkSystem
     {
         private static UIControl? _focusedControl;
-        private static readonly List<Window> _windows = new();
         private static readonly HashSet<UIControl> _controls = new();
 
         internal static UIControl? FocusedControl => _focusedControl;
-        internal static bool HasModal => _windows.Count > 0;
-
 
         internal static void SetFocus(UIControl? control)
         {

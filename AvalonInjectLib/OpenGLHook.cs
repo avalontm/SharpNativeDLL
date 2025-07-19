@@ -1,33 +1,11 @@
-﻿using System.Diagnostics;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Collections.Concurrent;
 using static AvalonInjectLib.Structs;
 
 namespace AvalonInjectLib
 {
     internal static unsafe class OpenGLHook
     {
-        #region CONSTANTS
-        private const int GL_LINES = 0x0001;
-        private const int GL_TRIANGLES = 0x0004;
-        private const int GL_TRIANGLE_FAN = 0x0006;
-        private const int GL_QUADS = 0x0007;
-        private const int GL_LINE_LOOP = 0x0002;
-        private const int GL_MODELVIEW = 0x1700;
-        private const int GL_PROJECTION = 0x1701;
-        private const int GL_VIEWPORT = 0x0BA2;
-        private const int GL_BLEND = 0x0BE2;
-        private const int GL_SRC_ALPHA = 0x0302;
-        private const int GL_ONE_MINUS_SRC_ALPHA = 0x0303;
-        private const int GL_DEPTH_TEST = 0x0B71;
-        private const int GL_CULL_FACE = 0x0B44;
-        private const int GL_LIGHTING = 0x0B50;
-        private const int GL_TEXTURE_2D = 0x0DE1;
-        private const int GL_ALPHA_TEST = 0x0BC0;
-        private const int GL_GREATER = 0x0204;
-        #endregion
-
         #region FIELDS
         private static volatile bool _initialized = false;
         private static volatile bool _hookInstalled = false;
@@ -35,543 +13,552 @@ namespace AvalonInjectLib
         private static int _screenWidth = 1920;
         private static int _screenHeight = 1080;
 
-        // NUEVO: Control de estado de recarga
-        private static volatile bool _isReloading = false;
-        private static volatile bool _skipNextFrames = false;
-        private static int _skipFrameCount = 0;
-        private static readonly object _reloadStateLock = new();
-
-        // Callbacks thread-safe
-        private static readonly ConcurrentBag<Action> _renderCallbacks = new();
+        // Thread-safe callback execution without rate limiting
+        private static volatile Action? _renderCallback = null;
         private static readonly object _callbackLock = new();
-        private static Action[] _cachedCallbacks = Array.Empty<Action>();
-        private static volatile bool _callbacksCacheDirty = true;
 
-        // Hook state
+        // Hook management
         private static IntPtr _originalWglSwapBuffers = IntPtr.Zero;
         private static IntPtr _hookTrampoline = IntPtr.Zero;
         private static byte[] _originalBytes = Array.Empty<byte>();
 
-        // OpenGL state preservation
-        private static readonly OpenGLState _savedState = new();
-        private static readonly int[] _viewportBuffer = new int[4];
+        // OpenGL state preservation (minimal for performance)
+        private static readonly int[] _viewport = new int[4];
+        private static readonly float[] _savedColor = new float[4];
+        private static bool _savedBlend, _savedDepthTest, _savedLighting, _savedTexture2D;
+        private static int _savedBlendSrc, _savedBlendDst, _savedMatrixMode;
+
+        // Context validation
+        private static IntPtr _lastValidContext = IntPtr.Zero;
+        private static volatile bool _contextValid = false;
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate bool WglSwapBuffersDelegate(IntPtr hdc);
-        #endregion
 
-        #region RELOAD STATE MANAGEMENT
-        /// <summary>
-        /// Indica al hook que se está iniciando una recarga de scripts
-        /// </summary>
-        internal static void BeginReload()
-        {
-            lock (_reloadStateLock)
-            {
-                _isReloading = true;
-                _skipNextFrames = true;
-                _skipFrameCount = 0;
-            }
-        }
-
-        /// <summary>
-        /// Indica al hook que la recarga de scripts ha terminado
-        /// </summary>
-        internal static void EndReload()
-        {
-            lock (_reloadStateLock)
-            {
-                _isReloading = false;
-                // Seguir saltando algunos frames para estabilizar
-                _skipNextFrames = true;
-                _skipFrameCount = 0;
-            }
-        }
-
-        /// <summary>
-        /// Verifica si está seguro renderizar callbacks
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsSafeToRender()
-        {
-            lock (_reloadStateLock)
-            {
-                // Si está recargando, no renderizar
-                if (_isReloading) return false;
-
-                // Si acabamos de terminar la recarga, saltar algunos frames
-                if (_skipNextFrames)
-                {
-                    _skipFrameCount++;
-                    if (_skipFrameCount >= 3) // Saltar 3 frames después de la recarga
-                    {
-                        _skipNextFrames = false;
-                        _skipFrameCount = 0;
-                    }
-                    return false;
-                }
-
-                return true;
-            }
-        }
-
-        /// <summary>
-        /// Propiedad para verificar el estado de recarga desde otros componentes
-        /// </summary>
-        internal static bool IsReloading => _isReloading;
-        #endregion
-
-        #region OPENGL STATE MANAGEMENT
-        private sealed class OpenGLState
-        {
-            public int MatrixMode;
-            public bool DepthTest;
-            public bool Blend;
-            public bool CullFace;
-            public bool Lighting;
-            public bool Texture2D;
-            public bool AlphaTest;
-            public readonly float[] ProjectionMatrix = new float[16];
-            public readonly float[] ModelViewMatrix = new float[16];
-            public readonly int[] Viewport = new int[4];
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public void SaveState()
-            {
-                OpenGLInterop.glGetIntegerv(OpenGLInterop.GL_MATRIX_MODE, out MatrixMode);
-                OpenGLInterop.glGetIntegerv(GL_VIEWPORT, Viewport);
-
-                DepthTest = OpenGLInterop.glIsEnabled(GL_DEPTH_TEST);
-                Blend = OpenGLInterop.glIsEnabled(GL_BLEND);
-                CullFace = OpenGLInterop.glIsEnabled(GL_CULL_FACE);
-                Lighting = OpenGLInterop.glIsEnabled(GL_LIGHTING);
-                Texture2D = OpenGLInterop.glIsEnabled(GL_TEXTURE_2D);
-                AlphaTest = OpenGLInterop.glIsEnabled(GL_ALPHA_TEST);
-
-                OpenGLInterop.glGetFloatv(OpenGLInterop.GL_PROJECTION_MATRIX, ProjectionMatrix);
-                OpenGLInterop.glGetFloatv(OpenGLInterop.GL_MODELVIEW_MATRIX, ModelViewMatrix);
-            }
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public void RestoreState()
-            {
-                // Restaurar matrices
-                OpenGLInterop.glMatrixMode(GL_PROJECTION);
-                OpenGLInterop.glLoadMatrixf(ProjectionMatrix);
-                OpenGLInterop.glMatrixMode(GL_MODELVIEW);
-                OpenGLInterop.glLoadMatrixf(ModelViewMatrix);
-                OpenGLInterop.glMatrixMode((uint)MatrixMode);
-
-                // Restaurar viewport
-                OpenGLInterop.glViewport(Viewport[0], Viewport[1], Viewport[2], Viewport[3]);
-
-                // Restaurar estados
-                SetGLState(GL_DEPTH_TEST, DepthTest);
-                SetGLState(GL_BLEND, Blend);
-                SetGLState(GL_CULL_FACE, CullFace);
-                SetGLState(GL_LIGHTING, Lighting);
-                SetGLState(GL_TEXTURE_2D, Texture2D);
-                SetGLState(GL_ALPHA_TEST, AlphaTest);
-            }
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            private static void SetGLState(int cap, bool enabled)
-            {
-                if (enabled)
-                    OpenGLInterop.glEnable((uint)cap);
-                else
-                    OpenGLInterop.glDisable((uint)cap);
-            }
-        }
+        private static WglSwapBuffersDelegate? _trampolineDelegate = null;
         #endregion
 
         #region PROPERTIES
         internal static bool Initialized => _initialized;
+        internal static bool HookInstalled => _hookInstalled;
         internal static int ScreenWidth => _screenWidth;
         internal static int ScreenHeight => _screenHeight;
-        #endregion
-
-        #region P/INVOKE
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool VirtualProtect(IntPtr lpAddress, uint dwSize, uint flNewProtect, out uint lpflOldProtect);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern bool WriteProcessMemory(IntPtr hProcess, IntPtr lpBaseAddress, byte[] lpBuffer, uint nSize, out UIntPtr lpNumberOfBytesWritten);
-
-        [DllImport("kernel32.dll")]
-        private static extern bool FlushInstructionCache(IntPtr hProcess, IntPtr lpBaseAddress, uint dwSize);
+        internal static bool HasRenderCallback => _renderCallback != null;
         #endregion
 
         #region CALLBACK MANAGEMENT
-        internal static void AddRenderCallback(Action renderCallback)
+        internal static void SetRenderCallback(Action? renderCallback)
         {
-            if (renderCallback == null || _disposing) return;
-
-            _renderCallbacks.Add(renderCallback);
-            _callbacksCacheDirty = true;
+            lock (_callbackLock)
+            {
+                _renderCallback = renderCallback;
+                Logger.Debug($"Render callback {(renderCallback != null ? "registered" : "cleared")}", "OpenGLHook");
+            }
         }
 
-        internal static void RemoveRenderCallback(Action renderCallback)
+        internal static void ClearRenderCallback()
         {
-            if (renderCallback == null) return;
-            _callbacksCacheDirty = true;
+            lock (_callbackLock)
+            {
+                _renderCallback = null;
+                Logger.Debug("Render callback cleared", "OpenGLHook");
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void ExecuteRenderCallbacks()
+        private static void ExecuteRenderCallback()
         {
-            if (_disposing || _renderCallbacks.IsEmpty) return;
+            if (_disposing || _renderCallback == null) return;
 
-            // CRÍTICO: Verificar si es seguro renderizar
-            if (!IsSafeToRender()) return;
-
-            // Actualizar cache si es necesario
-            if (_callbacksCacheDirty)
+            try
             {
-                lock (_callbackLock)
-                {
-                    if (_callbacksCacheDirty)
-                    {
-                        _cachedCallbacks = _renderCallbacks.ToArray();
-                        _callbacksCacheDirty = false;
-                    }
-                }
+                _renderCallback.Invoke();
             }
-
-            var callbacks = _cachedCallbacks;
-            if (callbacks.Length == 0) return;
-
-            // Ejecutar callbacks con manejo de errores
-            foreach (var callback in callbacks)
+            catch (Exception ex)
             {
-                try
-                {
-                    // Verificar nuevamente antes de cada callback
-                    if (!IsSafeToRender()) break;
-
-                    callback();
-                }
-                catch (Exception ex)
-                {
-                    // Log error in debug mode only
-#if DEBUG
-                    Logger.Error($"Callback error: {ex.Message}", "OpenGLHook");
-#endif
-                }
+                Logger.Error($"Render callback error: {ex.Message}", "OpenGLHook");
             }
         }
         #endregion
 
         #region INITIALIZATION
-        internal static bool Initialize(uint processId)
+        internal static bool Initialize()
         {
             if (_initialized) return true;
 
             try
             {
-                var hProcess = WinInterop.OpenProcess(WinInterop.PROCESS_ALL_ACCESS, false, processId);
-                if (hProcess == IntPtr.Zero)
+                Logger.Info("Initializing OpenGL Hook...", "OpenGLHook");
+
+                if (!FindOpenGLFunction())
                 {
-                    Logger.Warning($"Failed to open process: (0x{WinInterop.GetLastError():X8})", "OpenGLHook");
+                    Logger.Error("Failed to find OpenGL function", "OpenGLHook");
                     return false;
                 }
 
-                // Obtener dirección de wglSwapBuffers
-                IntPtr hOpenGL = WinInterop.GetModuleBaseEx(processId, "opengl32.dll");
-                if (hOpenGL == IntPtr.Zero)
+                if (!CreateHookTrampoline())
                 {
-                    Logger.Error("Failed to find opengl32.dll", "OpenGLHook");
+                    Logger.Error("Failed to create hook trampoline", "OpenGLHook");
                     return false;
                 }
 
-                _originalWglSwapBuffers = WinInterop.GetProcAddressEx(hProcess, hOpenGL, "wglSwapBuffers");
-                if (_originalWglSwapBuffers == IntPtr.Zero)
+                if (!InstallHookPatch())
                 {
-                    Logger.Error("Failed to find wglSwapBuffers", "OpenGLHook");
-                    return false;
-                }
-
-                // Crear trampolín e instalar hook
-                if (!CreateTrampoline() || !InstallHook())
-                {
-                    Logger.Error("Failed to create trampoline or install hook", "OpenGLHook");
+                    Logger.Error("Failed to install hook patch", "OpenGLHook");
+                    CleanupTrampoline();
                     return false;
                 }
 
                 _initialized = true;
                 _hookInstalled = true;
-                Logger.Debug("OpenGL Hook installed successfully!", "OpenGLHook");
+
+                Logger.Info("OpenGL Hook initialized successfully!", "OpenGLHook");
                 return true;
             }
             catch (Exception ex)
             {
-                Logger.Error($"Initialization error: {ex.Message}", "OpenGLHook");
+                Logger.Error($"Initialization failed: {ex.Message}", "OpenGLHook");
+                CleanupTrampoline();
                 return false;
             }
         }
 
-        private static bool CreateTrampoline()
+        private static bool FindOpenGLFunction()
+        {
+            try
+            {
+                IntPtr hOpenGL = ProcessManager.Module(AvalonEngine.Instance.Process.ProcessId, "opengl32.dll");
+                if (hOpenGL == IntPtr.Zero)
+                {
+                    Logger.Error("OpenGL32.dll not found in target process", "OpenGLHook");
+                    return false;
+                }
+
+                _originalWglSwapBuffers = WinInterop.GetProcAddressEx(
+                    AvalonEngine.Instance.Process.Handle,
+                    hOpenGL,
+                    "wglSwapBuffers"
+                );
+
+                if (_originalWglSwapBuffers == IntPtr.Zero)
+                {
+                    Logger.Error("wglSwapBuffers function not found", "OpenGLHook");
+                    return false;
+                }
+
+                Logger.Debug($"Found wglSwapBuffers at: 0x{_originalWglSwapBuffers:X8}", "OpenGLHook");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Error finding OpenGL function: {ex.Message}", "OpenGLHook");
+                return false;
+            }
+        }
+
+        private static bool CreateHookTrampoline()
         {
             try
             {
                 bool is64Bit = IntPtr.Size == 8;
-                int patchSize = is64Bit ? 12 : 5;
+                int originalBytesSize = is64Bit ? 12 : 5;
+                int trampolineSize = originalBytesSize + (is64Bit ? 14 : 5);
 
-                // Leer bytes originales
-                _originalBytes = new byte[patchSize];
-                Marshal.Copy(_originalWglSwapBuffers, _originalBytes, 0, patchSize);
+                // Save original bytes
+                _originalBytes = new byte[originalBytesSize];
+                Marshal.Copy(_originalWglSwapBuffers, _originalBytes, 0, originalBytesSize);
 
-                // Asignar memoria ejecutable
-                _hookTrampoline = Marshal.AllocHGlobal(patchSize + (is64Bit ? 12 : 5));
-
-                // Construir trampolín
-                byte[] trampolineCode;
-                if (is64Bit)
+                // Allocate trampoline memory
+                _hookTrampoline = Marshal.AllocHGlobal(trampolineSize);
+                if (_hookTrampoline == IntPtr.Zero)
                 {
-                    trampolineCode = new byte[patchSize + 12];
-                    Buffer.BlockCopy(_originalBytes, 0, trampolineCode, 0, patchSize);
-
-                    // mov rax, &original+patchSize
-                    trampolineCode[patchSize] = 0x48;
-                    trampolineCode[patchSize + 1] = 0xB8;
-                    long targetAddr = _originalWglSwapBuffers.ToInt64() + patchSize;
-                    Buffer.BlockCopy(BitConverter.GetBytes(targetAddr), 0, trampolineCode, patchSize + 2, 8);
-
-                    // jmp rax
-                    trampolineCode[patchSize + 10] = 0xFF;
-                    trampolineCode[patchSize + 11] = 0xE0;
-                }
-                else
-                {
-                    trampolineCode = new byte[patchSize + 5];
-                    Buffer.BlockCopy(_originalBytes, 0, trampolineCode, 0, patchSize);
-
-                    // jmp rel32
-                    trampolineCode[patchSize] = 0xE9;
-                    int targetAddr = _originalWglSwapBuffers.ToInt32() + patchSize;
-                    int jmpOffset = targetAddr - (_hookTrampoline.ToInt32() + patchSize + 5);
-                    Buffer.BlockCopy(BitConverter.GetBytes(jmpOffset), 0, trampolineCode, patchSize + 1, 4);
+                    Logger.Error("Failed to allocate trampoline memory", "OpenGLHook");
+                    return false;
                 }
 
+                // Build trampoline code
+                byte[] trampolineCode = BuildTrampolineCode(is64Bit, originalBytesSize);
+
+                // Write trampoline code to memory
                 Marshal.Copy(trampolineCode, 0, _hookTrampoline, trampolineCode.Length);
 
-                // Marcar como ejecutable
-                return VirtualProtect(_hookTrampoline, (uint)trampolineCode.Length, 0x40, out _);
+                // Make trampoline executable
+                if (!WinInterop.VirtualProtect(_hookTrampoline, (uint)trampolineCode.Length, 0x40, out _))
+                {
+                    Logger.Error("Failed to make trampoline executable", "OpenGLHook");
+                    return false;
+                }
+
+                // Create delegate for trampoline
+                _trampolineDelegate = Marshal.GetDelegateForFunctionPointer<WglSwapBuffersDelegate>(_hookTrampoline);
+
+                Logger.Debug($"Trampoline created at: 0x{_hookTrampoline:X8}", "OpenGLHook");
+                return true;
             }
             catch (Exception ex)
             {
-                Logger.Error($"Failed to create trampoline: {ex.Message}", "OpenGLHook");
+                Logger.Error($"Trampoline creation failed: {ex.Message}", "OpenGLHook");
                 return false;
             }
         }
 
-        private static bool InstallHook()
+        private static byte[] BuildTrampolineCode(bool is64Bit, int originalBytesSize)
+        {
+            if (is64Bit)
+            {
+                // x64 trampoline: original bytes + jump to continuation
+                byte[] trampolineCode = new byte[originalBytesSize + 14];
+
+                // Copy original bytes
+                Buffer.BlockCopy(_originalBytes, 0, trampolineCode, 0, originalBytesSize);
+
+                // MOV RAX, address
+                trampolineCode[originalBytesSize] = 0x48;
+                trampolineCode[originalBytesSize + 1] = 0xB8;
+
+                long continuationAddress = _originalWglSwapBuffers.ToInt64() + originalBytesSize;
+                Buffer.BlockCopy(BitConverter.GetBytes(continuationAddress), 0, trampolineCode, originalBytesSize + 2, 8);
+
+                // JMP RAX
+                trampolineCode[originalBytesSize + 10] = 0xFF;
+                trampolineCode[originalBytesSize + 11] = 0xE0;
+
+                return trampolineCode;
+            }
+            else
+            {
+                // x86 trampoline: original bytes + relative jump
+                byte[] trampolineCode = new byte[originalBytesSize + 5];
+
+                // Copy original bytes
+                Buffer.BlockCopy(_originalBytes, 0, trampolineCode, 0, originalBytesSize);
+
+                // JMP relative
+                trampolineCode[originalBytesSize] = 0xE9;
+
+                int continuationAddress = _originalWglSwapBuffers.ToInt32() + originalBytesSize;
+                int trampolineEnd = _hookTrampoline.ToInt32() + originalBytesSize + 5;
+                int jmpOffset = continuationAddress - trampolineEnd;
+
+                Buffer.BlockCopy(BitConverter.GetBytes(jmpOffset), 0, trampolineCode, originalBytesSize + 1, 4);
+
+                return trampolineCode;
+            }
+        }
+
+        private static bool InstallHookPatch()
         {
             try
             {
-                byte[] hookCode;
-                if (IntPtr.Size == 8)
+                byte[] hookCode = BuildHookCode();
+
+                // Make original function writable
+                if (!WinInterop.VirtualProtect(_originalWglSwapBuffers, (uint)hookCode.Length, 0x40, out uint oldProtect))
                 {
-                    hookCode = new byte[] {
-                        0x48, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // mov rax, address
-                        0xFF, 0xE0 // jmp rax
-                    };
-                    fixed (byte* p = hookCode)
-                    {
-                        *(ulong*)(p + 2) = (ulong)((delegate* unmanaged<IntPtr, bool>)&HookedWglSwapBuffers);
-                    }
+                    Logger.Error("Failed to make original function writable", "OpenGLHook");
+                    return false;
+                }
+
+                bool success = false;
+
+                // Write hook code
+                fixed (byte* pHookCode = hookCode)
+                {
+                    success = WinInterop.WriteProcessMemory(
+                        AvalonEngine.Instance.Process.Handle,
+                        _originalWglSwapBuffers,
+                        pHookCode,
+                        (uint)hookCode.Length,
+                        out _
+                    );
+                }
+
+                // Restore original protection
+                WinInterop.VirtualProtect(_originalWglSwapBuffers, (uint)hookCode.Length, oldProtect, out _);
+
+                if (success)
+                {
+                    // Flush instruction cache
+                    WinInterop.FlushInstructionCache(
+                        AvalonEngine.Instance.Process.Handle,
+                        _originalWglSwapBuffers,
+                        (uint)hookCode.Length
+                    );
+
+                    Logger.Debug("Hook patch installed successfully", "OpenGLHook");
                 }
                 else
                 {
-                    hookCode = new byte[] { 0xE9, 0x00, 0x00, 0x00, 0x00 }; // jmp rel32
-                    fixed (byte* p = hookCode)
-                    {
-                        *(uint*)(p + 1) = (uint)((int)((delegate* unmanaged<IntPtr, bool>)&HookedWglSwapBuffers) - ((int)_originalWglSwapBuffers + 5));
-                    }
+                    Logger.Error("Failed to write hook code", "OpenGLHook");
                 }
-
-                // Instalar hook atómicamente
-                if (!VirtualProtect(_originalWglSwapBuffers, (uint)hookCode.Length, 0x40, out uint oldProtect))
-                    return false;
-
-                var success = WriteProcessMemory(Process.GetCurrentProcess().Handle, _originalWglSwapBuffers, hookCode, (uint)hookCode.Length, out _);
-                VirtualProtect(_originalWglSwapBuffers, (uint)hookCode.Length, oldProtect, out _);
-
-                if (success)
-                    FlushInstructionCache(Process.GetCurrentProcess().Handle, _originalWglSwapBuffers, (uint)hookCode.Length);
 
                 return success;
             }
             catch (Exception ex)
             {
-                Logger.Error($"Failed to install hook: {ex.Message}", "OpenGLHook");
+                Logger.Error($"Hook patch installation failed: {ex.Message}", "OpenGLHook");
                 return false;
             }
         }
-        #endregion
 
-        #region HOOK FUNCTION
-        [UnmanagedCallersOnly]
-        private static bool HookedWglSwapBuffers(IntPtr hdc)
+        private static byte[] BuildHookCode()
         {
-            if (_disposing || hdc == IntPtr.Zero)
-                return CallOriginalWglSwapBuffers(hdc);
+            bool is64Bit = IntPtr.Size == 8;
+
+            if (is64Bit)
+            {
+                // x64: MOV RAX, address; JMP RAX
+                byte[] hookCode = new byte[12];
+                hookCode[0] = 0x48; // REX.W
+                hookCode[1] = 0xB8; // MOV RAX, imm64
+
+                ulong hookAddress = (ulong)((delegate* unmanaged<IntPtr, bool>)&HookedWglSwapBuffers);
+                Buffer.BlockCopy(BitConverter.GetBytes(hookAddress), 0, hookCode, 2, 8);
+
+                hookCode[10] = 0xFF; // JMP RAX
+                hookCode[11] = 0xE0;
+
+                return hookCode;
+            }
+            else
+            {
+                // x86: JMP relative
+                byte[] hookCode = new byte[5];
+                hookCode[0] = 0xE9; // JMP rel32
+
+                int hookAddress = (int)((delegate* unmanaged<IntPtr, bool>)&HookedWglSwapBuffers);
+                int jmpOffset = hookAddress - (_originalWglSwapBuffers.ToInt32() + 5);
+
+                Buffer.BlockCopy(BitConverter.GetBytes(jmpOffset), 0, hookCode, 1, 4);
+
+                return hookCode;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool CallOriginalFunction(IntPtr hdc)
+        {
+            if (_trampolineDelegate == null) return false;
 
             try
             {
-                // Verificar contexto válido antes de cualquier operación
-                if (!IsValidOpenGLContext(hdc))
-                    return CallOriginalWglSwapBuffers(hdc);
-
-                // CRÍTICO: Usar GlobalSync para prevenir condiciones de carrera
-                if (!GlobalSync.TryBeginRender(out var renderScope))
-                    return CallOriginalWglSwapBuffers(hdc);
-
-                using (renderScope)
-                {
-                    // Renderizar overlay solo si es seguro
-                    if (IsSafeToRender())
-                    {
-                        RenderOverlayStable();
-                    }
-                }
-
-                // DESPUÉS del renderizado, hacer swap una sola vez
-                return CallOriginalWglSwapBuffers(hdc);
+                return _trampolineDelegate(hdc);
             }
             catch (Exception ex)
             {
-#if DEBUG
-                Logger.Error($"Hook error: {ex.Message}", "OpenGLHook");
-#endif
-                return CallOriginalWglSwapBuffers(hdc);
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool CallOriginalWglSwapBuffers(IntPtr hdc)
-        {
-            if (_hookTrampoline == IntPtr.Zero) return false;
-
-            var originalFunc = (delegate* unmanaged<IntPtr, bool>)_hookTrampoline.ToPointer();
-            return originalFunc(hdc);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsValidOpenGLContext(IntPtr hdc)
-        {
-            var currentContext = OpenGLInterop.wglGetCurrentContext();
-            var currentDC = OpenGLInterop.wglGetCurrentDC();
-
-            if (currentContext == IntPtr.Zero || currentDC == IntPtr.Zero)
+                Logger.Error($"Error calling original function: {ex.Message}", "OpenGLHook");
                 return false;
-
-            // Si el DC no coincide, intentar hacer current
-            if (currentDC != hdc)
-            {
-                return OpenGLInterop.wglMakeCurrent(hdc, currentContext);
-            }
-
-            return true;
-        }
-
-        private static void RenderOverlayStable()
-        {
-            // Guardar estado completo de OpenGL
-            _savedState.SaveState();
-
-            try
-            {
-                // Configurar para renderizado 2D estable
-                ConfigureOverlayRendering();
-
-                // Marcar contexto como disponible solo si es seguro
-                if (IsSafeToRender())
-                {
-                    TextureRenderer.IsContexted = true;
-                    FontRenderer.IsContexted = true;
-
-                    // Procesar contenido pendiente (limitado por frame)
-                    ProcessPendingContent();
-
-                    // Ejecutar callbacks de renderizado
-                    ExecuteRenderCallbacks();
-                }
-
-                // Asegurar que todo se renderice al back buffer
-                OpenGLInterop.glFlush();
-            }
-            finally
-            {
-                // Restaurar estado completo
-                _savedState.RestoreState();
-                TextureRenderer.IsContexted = false;
-                FontRenderer.IsContexted = false;
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void ConfigureOverlayRendering()
-        {
-            // Actualizar dimensiones de pantalla
-            _screenWidth = _savedState.Viewport[2];
-            _screenHeight = _savedState.Viewport[3];
-
-            // Configurar matrices para overlay 2D
-            OpenGLInterop.glMatrixMode(GL_PROJECTION);
-            OpenGLInterop.glLoadIdentity();
-            OpenGLInterop.glOrtho(0, _screenWidth, _screenHeight, 0, -1, 1);
-
-            OpenGLInterop.glMatrixMode(GL_MODELVIEW);
-            OpenGLInterop.glLoadIdentity();
-
-            // Estados para overlay 2D estable
-            OpenGLInterop.glDisable(GL_DEPTH_TEST);
-            OpenGLInterop.glDisable(GL_CULL_FACE);
-            OpenGLInterop.glDisable(GL_LIGHTING);
-            OpenGLInterop.glDisable(GL_TEXTURE_2D);
-            OpenGLInterop.glDisable(GL_ALPHA_TEST);
-
-            // Configurar blending apropiado
-            OpenGLInterop.glEnable(GL_BLEND);
-            OpenGLInterop.glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-            // Color base
-            OpenGLInterop.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-        }
-
-        private static void ProcessPendingContent()
-        {
-            // Solo procesar si es seguro
-            if (!IsSafeToRender()) return;
-
-            // Procesar texturas pendientes (máximo 3 por frame)
-            int textureCount = 0;
-            while (TextureRenderer.HasPendingTextures() && textureCount < 3 && IsSafeToRender())
-            {
-                TextureRenderer.ProcessPendingTextures();
-                textureCount++;
-            }
-
-            // Procesar fuentes pendientes (máximo 2 por frame)
-            int fontCount = 0;
-            while (FontRenderer.HasPendingFonts() && fontCount < 2 && IsSafeToRender())
-            {
-                FontRenderer.ProcessPendingFonts();
-                fontCount++;
             }
         }
         #endregion
 
-        #region DRAWING FUNCTIONS
+        #region HOOK FUNCTION - OPTIMIZED FOR EVERY FRAME
+        [UnmanagedCallersOnly]
+        private static bool HookedWglSwapBuffers(IntPtr hdc)
+        {
+            // Fast context validation
+            if (!ValidateOpenGLContext(hdc))
+            {
+                return CallOriginalFunction(hdc);
+            }
+
+            // EXECUTE RENDER CALLBACK EVERY FRAME - No rate limiting
+            if (_renderCallback != null && !_disposing)
+            {
+                RenderOverlay(hdc);
+            }
+
+            // CRITICAL: Call original function after rendering overlay
+            return CallOriginalFunction(hdc);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool ValidateOpenGLContext(IntPtr hdc)
+        {
+            if (hdc == IntPtr.Zero) return false;
+
+            try
+            {
+                IntPtr currentContext = OpenGLInterop.wglGetCurrentContext();
+                bool isValid = currentContext != IntPtr.Zero;
+
+                if (isValid && currentContext != _lastValidContext)
+                {
+                    _lastValidContext = currentContext;
+                    _contextValid = true;
+                }
+
+                return isValid;
+            }
+            catch
+            {
+                _contextValid = false;
+                return false;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void RenderOverlay(IntPtr hdc)
+        {
+            if (!_contextValid) return;
+
+            try
+            {
+                // Save minimal OpenGL state
+                if (!SaveOpenGLState()) return;
+
+                // Setup for 2D overlay rendering
+                SetupOverlayRendering();
+
+                // EXECUTE CALLBACK EVERY FRAME
+                ExecuteRenderCallback();
+
+                // Ensure overlay is drawn
+                OpenGLInterop.glFlush();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Overlay rendering error: {ex.Message}", "OpenGLHook");
+            }
+            finally
+            {
+                // ALWAYS restore OpenGL state
+                RestoreOpenGLState();
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void SetupOverlayRendering()
+        {
+            // Get current viewport
+            fixed (int* viewportPtr = _viewport)
+            {
+                OpenGLInterop.glGetIntegerv(OpenGLInterop.GL_VIEWPORT, viewportPtr);
+            }
+
+            _screenWidth = _viewport[2];
+            _screenHeight = _viewport[3];
+
+            // Setup projection matrix for 2D overlay
+            OpenGLInterop.glMatrixMode(OpenGLInterop.GL_PROJECTION);
+            OpenGLInterop.glPushMatrix();
+            OpenGLInterop.glLoadIdentity();
+            OpenGLInterop.glOrtho(0, _screenWidth, _screenHeight, 0, -1, 1);
+
+            // Setup modelview matrix
+            OpenGLInterop.glMatrixMode(OpenGLInterop.GL_MODELVIEW);
+            OpenGLInterop.glPushMatrix();
+            OpenGLInterop.glLoadIdentity();
+
+            // Configure render states for transparent overlay
+            OpenGLInterop.glDisable(OpenGLInterop.GL_DEPTH_TEST);
+            OpenGLInterop.glDisable(OpenGLInterop.GL_LIGHTING);
+            OpenGLInterop.glDisable(OpenGLInterop.GL_TEXTURE_2D);
+            OpenGLInterop.glDisable(OpenGLInterop.GL_CULL_FACE);
+
+            // Enable blending for transparency
+            OpenGLInterop.glEnable(OpenGLInterop.GL_BLEND);
+            OpenGLInterop.glBlendFunc(OpenGLInterop.GL_SRC_ALPHA, OpenGLInterop.GL_ONE_MINUS_SRC_ALPHA);
+
+            // Set default color
+            OpenGLInterop.glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+        }
+        #endregion
+
+        #region OPENGL STATE MANAGEMENT
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool SaveOpenGLState()
+        {
+            try
+            {
+                // Save essential states only for performance
+                OpenGLInterop.glGetIntegerv(OpenGLInterop.GL_MATRIX_MODE, out _savedMatrixMode);
+
+                _savedBlend = OpenGLInterop.glIsEnabled(OpenGLInterop.GL_BLEND);
+                _savedDepthTest = OpenGLInterop.glIsEnabled(OpenGLInterop.GL_DEPTH_TEST);
+                _savedLighting = OpenGLInterop.glIsEnabled(OpenGLInterop.GL_LIGHTING);
+                _savedTexture2D = OpenGLInterop.glIsEnabled(OpenGLInterop.GL_TEXTURE_2D);
+
+                if (_savedBlend)
+                {
+                    OpenGLInterop.glGetIntegerv(OpenGLInterop.GL_BLEND_SRC, out _savedBlendSrc);
+                    OpenGLInterop.glGetIntegerv(OpenGLInterop.GL_BLEND_DST, out _savedBlendDst);
+                }
+
+                // Save current color
+                fixed (float* colorPtr = _savedColor)
+                {
+                    OpenGLInterop.glGetFloatv(OpenGLInterop.GL_CURRENT_COLOR, colorPtr);
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Failed to save OpenGL state: {ex.Message}", "OpenGLHook");
+                return false;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void RestoreOpenGLState()
+        {
+            try
+            {
+                // Restore matrices
+                OpenGLInterop.glMatrixMode(OpenGLInterop.GL_PROJECTION);
+                OpenGLInterop.glPopMatrix();
+                OpenGLInterop.glMatrixMode(OpenGLInterop.GL_MODELVIEW);
+                OpenGLInterop.glPopMatrix();
+
+                // Restore matrix mode
+                OpenGLInterop.glMatrixMode((uint)_savedMatrixMode);
+
+                // Restore render states
+                if (_savedBlend)
+                {
+                    OpenGLInterop.glEnable(OpenGLInterop.GL_BLEND);
+                    OpenGLInterop.glBlendFunc((uint)_savedBlendSrc, (uint)_savedBlendDst);
+                }
+                else
+                {
+                    OpenGLInterop.glDisable(OpenGLInterop.GL_BLEND);
+                }
+
+                if (_savedDepthTest)
+                    OpenGLInterop.glEnable(OpenGLInterop.GL_DEPTH_TEST);
+                else
+                    OpenGLInterop.glDisable(OpenGLInterop.GL_DEPTH_TEST);
+
+                if (_savedLighting)
+                    OpenGLInterop.glEnable(OpenGLInterop.GL_LIGHTING);
+                else
+                    OpenGLInterop.glDisable(OpenGLInterop.GL_LIGHTING);
+
+                if (_savedTexture2D)
+                    OpenGLInterop.glEnable(OpenGLInterop.GL_TEXTURE_2D);
+                else
+                    OpenGLInterop.glDisable(OpenGLInterop.GL_TEXTURE_2D);
+
+                // Restore color
+                OpenGLInterop.glColor4f(_savedColor[0], _savedColor[1], _savedColor[2], _savedColor[3]);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Failed to restore OpenGL state: {ex.Message}", "OpenGLHook");
+            }
+        }
+        #endregion
+
+        #region DRAWING FUNCTIONS - 2D OVERLAY
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void DrawLine(Vector2 start, Vector2 end, float thickness, Color color)
         {
-            if (!_initialized || !IsSafeToRender()) return;
+            if (!_initialized || _disposing) return;
 
             OpenGLInterop.glLineWidth(thickness);
-            OpenGLInterop.glBegin(GL_LINES);
             OpenGLInterop.glColor4f(color.R, color.G, color.B, color.A);
+            OpenGLInterop.glBegin(OpenGLInterop.GL_LINES);
             OpenGLInterop.glVertex2f(start.X, start.Y);
             OpenGLInterop.glVertex2f(end.X, end.Y);
             OpenGLInterop.glEnd();
@@ -580,11 +567,11 @@ namespace AvalonInjectLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void DrawBox(float x, float y, float width, float height, float thickness, Color color)
         {
-            if (!_initialized || !IsSafeToRender()) return;
+            if (!_initialized || _disposing) return;
 
             OpenGLInterop.glLineWidth(thickness);
-            OpenGLInterop.glBegin(GL_LINE_LOOP);
             OpenGLInterop.glColor4f(color.R, color.G, color.B, color.A);
+            OpenGLInterop.glBegin(OpenGLInterop.GL_LINE_LOOP);
             OpenGLInterop.glVertex2f(x, y);
             OpenGLInterop.glVertex2f(x + width, y);
             OpenGLInterop.glVertex2f(x + width, y + height);
@@ -595,10 +582,10 @@ namespace AvalonInjectLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void DrawFilledBox(float x, float y, float width, float height, Color color)
         {
-            if (!_initialized || !IsSafeToRender()) return;
+            if (!_initialized || _disposing) return;
 
-            OpenGLInterop.glBegin(GL_QUADS);
             OpenGLInterop.glColor4f(color.R, color.G, color.B, color.A);
+            OpenGLInterop.glBegin(OpenGLInterop.GL_QUADS);
             OpenGLInterop.glVertex2f(x, y);
             OpenGLInterop.glVertex2f(x + width, y);
             OpenGLInterop.glVertex2f(x + width, y + height);
@@ -609,40 +596,62 @@ namespace AvalonInjectLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void DrawFilledCircle(Vector2 center, float radius, Color color)
         {
-            if (!_initialized || !IsSafeToRender() || radius <= 0) return;
+            if (!_initialized || _disposing || radius <= 0) return;
 
-            // Optimización: segmentos basados en tamaño
-            int segments = radius switch
-            {
-                < 20f => 12,
-                < 50f => 16,
-                < 100f => 24,
-                _ => 32
-            };
+            // Adaptive segments for performance optimization
+            int segments = Math.Max(8, Math.Min(48, (int)(radius * 0.8f)));
+            const float TWO_PI = 6.28318530718f;
 
-            OpenGLInterop.glBegin(GL_TRIANGLE_FAN);
+            OpenGLInterop.glBegin(OpenGLInterop.GL_TRIANGLE_FAN);
             OpenGLInterop.glColor4f(color.R, color.G, color.B, color.A);
+
+            // Center vertex
             OpenGLInterop.glVertex2f(center.X, center.Y);
 
-            const float PI2 = 6.28318530718f;
+            // Circle vertices
+            float angleStep = TWO_PI / segments;
             for (int i = 0; i <= segments; i++)
             {
-                float angle = (float)i / segments * PI2;
+                float angle = i * angleStep;
                 OpenGLInterop.glVertex2f(
                     center.X + MathF.Cos(angle) * radius,
                     center.Y + MathF.Sin(angle) * radius
                 );
             }
+            OpenGLInterop.glEnd();
+        }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static void DrawCircle(Vector2 center, float radius, float thickness, Color color)
+        {
+            if (!_initialized || _disposing || radius <= 0) return;
+
+            // Adaptive segments for performance optimization
+            int segments = Math.Max(8, Math.Min(48, (int)(radius * 0.8f)));
+            const float TWO_PI = 6.28318530718f;
+
+            OpenGLInterop.glLineWidth(thickness);
+            OpenGLInterop.glColor4f(color.R, color.G, color.B, color.A);
+            OpenGLInterop.glBegin(OpenGLInterop.GL_LINE_LOOP);
+
+            float angleStep = TWO_PI / segments;
+            for (int i = 0; i < segments; i++)
+            {
+                float angle = i * angleStep;
+                OpenGLInterop.glVertex2f(
+                    center.X + MathF.Cos(angle) * radius,
+                    center.Y + MathF.Sin(angle) * radius
+                );
+            }
             OpenGLInterop.glEnd();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void DrawTriangle(Vector2 v1, Vector2 v2, Vector2 v3, Color color)
         {
-            if (!_initialized || !IsSafeToRender()) return;
+            if (!_initialized || _disposing) return;
 
-            OpenGLInterop.glBegin(GL_TRIANGLES);
+            OpenGLInterop.glBegin(OpenGLInterop.GL_TRIANGLES);
             OpenGLInterop.glColor4f(color.R, color.G, color.B, color.A);
             OpenGLInterop.glVertex2f(v1.X, v1.Y);
             OpenGLInterop.glVertex2f(v2.X, v2.Y);
@@ -653,37 +662,99 @@ namespace AvalonInjectLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static void DrawText(uint fontId, string text, Vector2 position, Color color, float scale = 1f)
         {
-            if (!_initialized || !IsSafeToRender() || string.IsNullOrEmpty(text)) return;
+            if (!_initialized || _disposing || string.IsNullOrEmpty(text)) return;
             FontRenderer.DrawText(fontId, text, position.X, position.Y, scale, color);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static void DrawPolygon(Vector2[] vertices, Color color)
+        {
+            if (!_initialized || _disposing || vertices == null || vertices.Length < 3) return;
+
+            OpenGLInterop.glBegin(OpenGLInterop.GL_POLYGON);
+            OpenGLInterop.glColor4f(color.R, color.G, color.B, color.A);
+
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                OpenGLInterop.glVertex2f(vertices[i].X, vertices[i].Y);
+            }
+
+            OpenGLInterop.glEnd();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static void ClearOverlay()
+        {
+            if (!_initialized || _disposing) return;
+            // Note: Avoid using glClear to prevent interference with the game
+            // If needed, draw a transparent rectangle instead
         }
         #endregion
 
         #region CLEANUP
+        private static void CleanupTrampoline()
+        {
+            if (_hookTrampoline != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(_hookTrampoline);
+                _hookTrampoline = IntPtr.Zero;
+            }
+            _trampolineDelegate = null;
+        }
+
         internal static void Cleanup()
         {
             if (!_initialized) return;
 
             _disposing = true;
+            Logger.Info("Cleaning up OpenGL Hook...", "OpenGLHook");
 
             try
             {
-                // Restaurar hook original
+                // Clear callback
+                lock (_callbackLock)
+                {
+                    _renderCallback = null;
+                }
+
+                // Restore original function
                 if (_hookInstalled && _originalWglSwapBuffers != IntPtr.Zero && _originalBytes.Length > 0)
                 {
-                    VirtualProtect(_originalWglSwapBuffers, (uint)_originalBytes.Length, 0x40, out uint oldProtect);
-                    WriteProcessMemory(Process.GetCurrentProcess().Handle, _originalWglSwapBuffers, _originalBytes, (uint)_originalBytes.Length, out _);
-                    VirtualProtect(_originalWglSwapBuffers, (uint)_originalBytes.Length, oldProtect, out _);
-                    FlushInstructionCache(Process.GetCurrentProcess().Handle, _originalWglSwapBuffers, (uint)_originalBytes.Length);
+                    if (WinInterop.VirtualProtect(_originalWglSwapBuffers, (uint)_originalBytes.Length, 0x40, out uint oldProtect))
+                    {
+                        fixed (byte* pOriginalBytes = _originalBytes)
+                        {
+                            bool restored = WinInterop.WriteProcessMemory(
+                                AvalonEngine.Instance.Process.Handle,
+                                _originalWglSwapBuffers,
+                                pOriginalBytes,
+                                (uint)_originalBytes.Length,
+                                out _
+                            );
+
+                            if (restored)
+                            {
+                                WinInterop.FlushInstructionCache(
+                                    AvalonEngine.Instance.Process.Handle,
+                                    _originalWglSwapBuffers,
+                                    (uint)_originalBytes.Length
+                                );
+                                Logger.Debug("Original function restored", "OpenGLHook");
+                            }
+                            else
+                            {
+                                Logger.Error("Failed to restore original function", "OpenGLHook");
+                            }
+                        }
+
+                        WinInterop.VirtualProtect(_originalWglSwapBuffers, (uint)_originalBytes.Length, oldProtect, out _);
+                    }
                 }
 
-                // Liberar memoria del trampolín
-                if (_hookTrampoline != IntPtr.Zero)
-                {
-                    Marshal.FreeHGlobal(_hookTrampoline);
-                    _hookTrampoline = IntPtr.Zero;
-                }
+                // Cleanup trampoline
+                CleanupTrampoline();
 
-                Logger.Debug("OpenGL Hook cleaned up successfully", "OpenGLHook");
+                Logger.Info("OpenGL Hook cleanup completed", "OpenGLHook");
             }
             catch (Exception ex)
             {
@@ -694,6 +765,8 @@ namespace AvalonInjectLib
                 _initialized = false;
                 _hookInstalled = false;
                 _disposing = false;
+                _contextValid = false;
+                _lastValidContext = IntPtr.Zero;
             }
         }
         #endregion

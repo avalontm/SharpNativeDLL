@@ -6,7 +6,9 @@ namespace AvalonInjectLib
     {
         public uint ProcessId { get; }
         public IntPtr Handle { get; }
+        public IntPtr WindowHandle { get; private set; }
         private readonly IntPtr _moduleBase;
+        private bool _disposed = false;
 
         public ModuleBaseWrapper ModuleBase => new ModuleBaseWrapper(this, _moduleBase);
 
@@ -17,6 +19,14 @@ namespace AvalonInjectLib
             ProcessId = processId;
             Handle = hProcess;
             _moduleBase = moduleBase;
+
+            // Obtener automáticamente el handle de ventana
+            WindowHandle = ProcessManager.GetMainWindowHandle(ProcessId);
+        }
+
+        public void RefreshWindowHandle()
+        {
+            WindowHandle = ProcessManager.GetMainWindowHandle(ProcessId);
         }
 
         #region Read Methods
@@ -145,7 +155,31 @@ namespace AvalonInjectLib
 
         public void Dispose()
         {
-            
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_disposed) return;
+
+            if (disposing)
+            {
+                // Liberar recursos administrados
+            }
+
+            // Liberar recursos no administrados
+            if (Handle != IntPtr.Zero)
+            {
+                ProcessManager.CloseProcessHandle(Handle);
+            }
+
+            _disposed = true;
+        }
+
+        ~ProcessEntry()
+        {
+            Dispose(false);
         }
     }
 }

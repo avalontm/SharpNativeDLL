@@ -1,0 +1,67 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:AvalonLoader.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="AvalonLoader.Views.MainView"
+             x:DataType="vm:MainViewModel">
+	
+	<Design.DataContext>
+		<vm:MainViewModel/>
+	</Design.DataContext>
+
+	<Grid RowDefinitions="Auto,*,Auto" Margin="10">
+		<!-- Header -->
+		<StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" Margin="0,0,0,10">
+			<Image Width="32" Height="32" Source="/Assets/avalonia-logo.ico"/>
+			<TextBlock Text="AvalonLoader" FontSize="20" VerticalAlignment="Center"/>
+		</StackPanel>
+
+		<!-- Main Content -->
+		<Grid Grid.Row="1" ColumnDefinitions="*,2*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,0,0,20">
+			<!-- Process Selection -->
+			<TextBlock Grid.Row="0" Grid.Column="0" Text="Target Process:" VerticalAlignment="Center"/>
+			<StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="5">
+				<ComboBox ItemsSource="{Binding Processes}"
+                          SelectedItem="{Binding SelectedProcess}"
+                          Width="250"
+                          HorizontalAlignment="Left">
+					<ComboBox.ItemTemplate>
+						<DataTemplate>
+							<StackPanel Orientation="Horizontal" Spacing="5">
+								<Image Width="16" Height="16" Source="{Binding Icon}"/>
+								<TextBlock Text="{Binding Name}"/>
+								<TextBlock Text="{Binding Id}" Foreground="Gray" Opacity="0.7"/>
+							</StackPanel>
+						</DataTemplate>
+					</ComboBox.ItemTemplate>
+				</ComboBox>
+				<Button Content="Refresh" Command="{Binding RefreshProcessesCommand}"/>
+			</StackPanel>
+
+			<!-- DLL Selection -->
+			<TextBlock Grid.Row="1" Grid.Column="0" Text="DLL to Inject:" VerticalAlignment="Center"/>
+			<StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="5">
+				<TextBox Text="{Binding DllPath}" Width="300" Watermark="Path to DLL..."/>
+				<Button Content="Browse..." Command="{Binding BrowseDllCommand}"/>
+			</StackPanel>
+
+			<!-- Configuration -->
+			<TextBlock Grid.Row="2" Grid.Column="0" Text="Root Path:" VerticalAlignment="Center"/>
+			<TextBox Grid.Row="2" Grid.Column="1" Text="{Binding RootPath}" Watermark="Base directory for scripts"/>
+
+			<TextBlock Grid.Row="3" Grid.Column="0" Text="Scripts Path:" VerticalAlignment="Center"/>
+			<TextBox Grid.Row="3" Grid.Column="1" Text="{Binding RootScripts}" Watermark="Scripts directory"/>
+		</Grid>
+
+		<!-- Action Buttons -->
+		<StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+			<Button Content="Inject DLL"
+                    Command="{Binding InjectCommand}"
+                    Width="120"
+                    Classes="Primary"/>
+			<Button Content="Cancel" Width="120"/>
+		</StackPanel>
+	</Grid>
+</UserControl>

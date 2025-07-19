@@ -98,7 +98,7 @@ namespace AvalonInjectLib.UIFramework
             Renderer.DrawRect(X, Y, Width, Height, BackgroundColor);
 
             // Dibujar borde
-            Renderer.DrawRectOutline(X, Y, Width, Height, BorderColor, BorderWidth);
+            Renderer.DrawRectOutline(new Rect(X, Y, Width, Height), BorderColor, BorderWidth);
 
             // Dibujar items sin márgenes
             float currentY = Y + BorderWidth - _scrollOffset;
@@ -128,6 +128,8 @@ namespace AvalonInjectLib.UIFramework
         public override void Update()
         {
             base.Update();
+
+            if (!Visible) return;
 
             foreach (var item in _subItems)
             {

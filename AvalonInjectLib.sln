@@ -9,6 +9,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AvalonInjectLib", "AvalonIn
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TargetGame", "TargetGame\TargetGame.csproj", "{233975AC-8435-4525-B9F3-BF69C712B658}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AvalonLoader", "AvalonLoader\AvalonLoader.csproj", "{3B9F043E-4706-0B49-C152-E859498D0E04}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AvalonLoader.Desktop", "AvalonLoader.Desktop\AvalonLoader.Desktop.csproj", "{87BA56EC-61A0-901D-B654-1B334F8E5B64}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +31,14 @@ Global
 		{233975AC-8435-4525-B9F3-BF69C712B658}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{233975AC-8435-4525-B9F3-BF69C712B658}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{233975AC-8435-4525-B9F3-BF69C712B658}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3B9F043E-4706-0B49-C152-E859498D0E04}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3B9F043E-4706-0B49-C152-E859498D0E04}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3B9F043E-4706-0B49-C152-E859498D0E04}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3B9F043E-4706-0B49-C152-E859498D0E04}.Release|Any CPU.Build.0 = Release|Any CPU
+		{87BA56EC-61A0-901D-B654-1B334F8E5B64}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{87BA56EC-61A0-901D-B654-1B334F8E5B64}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{87BA56EC-61A0-901D-B654-1B334F8E5B64}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{87BA56EC-61A0-901D-B654-1B334F8E5B64}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

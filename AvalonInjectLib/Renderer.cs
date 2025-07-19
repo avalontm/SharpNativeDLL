@@ -3,346 +3,254 @@ using static AvalonInjectLib.Structs;
 
 namespace AvalonInjectLib
 {
+    /// <summary>
+    /// Provides hardware-accelerated 2D rendering capabilities with support for multiple graphics APIs.
+    /// Manages rendering state, transformations, and resource loading efficiently.
+    /// </summary>
     public static class Renderer
     {
-        private static Stack<ViewMatrix> _transformStack = new Stack<ViewMatrix>();
-        private static ViewMatrix _currentTransform = ViewMatrix.Identity;
+        // Reusable color struct to avoid allocations
+        private static Structs.Color _tempColor;
 
+        /// <summary>
+        /// Supported graphics APIs
+        /// </summary>
         public enum GraphicsAPI
         {
-            None, OpenGL, DirectX,
+            None,
+            OpenGL,
+            DirectX
         }
 
-        public static GraphicsAPI CurrentAPI = GraphicsAPI.OpenGL;
+        /// <summary>
+        /// Currently active graphics API
+        /// </summary>
+        public static GraphicsAPI CurrentAPI { get; set; } = GraphicsAPI.OpenGL;
 
-        public static int ScreenWidth
+        /// <summary>
+        /// Gets the screen width in pixels
+        /// </summary>
+        public static int ScreenWidth => CurrentAPI == GraphicsAPI.OpenGL ?
+            OpenGLHook.ScreenWidth : 1920;
+
+        /// <summary>
+        /// Gets the screen height in pixels
+        /// </summary>
+        public static int ScreenHeight => CurrentAPI == GraphicsAPI.OpenGL ?
+            OpenGLHook.ScreenHeight : 1080;
+
+        /// <summary>
+        /// Initializes the graphics subsystem for the specified process
+        /// </summary>
+        public static bool InitializeGraphics()
         {
-            get
+            if (CurrentAPI == GraphicsAPI.DirectX)
             {
-                if (CurrentAPI == GraphicsAPI.OpenGL)
-                {
-                    return OpenGLHook.ScreenWidth;
-                }
-                else
-                {
-                    return 1920;
-                }
+                DirectXHook.Initialize();
             }
-        }
-
-        public static int ScreenHeight
-        {
-            get
+            else
             {
-                if (CurrentAPI == GraphicsAPI.OpenGL)
-                {
-                    return OpenGLHook.ScreenHeight;
-                }
-                else
-                {
-                    return 1080;
-                }
-            }
-        }
-
-
-        public static void InitializeGraphics(uint processId, IntPtr swapChain = default)
-        {
-            if (CurrentAPI == GraphicsAPI.DirectX && swapChain != IntPtr.Zero)
-            {
-                DirectXHook.Initialize(swapChain);
-                return;
+              return OpenGLHook.Initialize();
             }
 
-            OpenGLHook.Initialize(processId);
-
+            return true;
         }
 
-
+        /// <summary>
+        /// Registers a callback to be invoked during the rendering phase
+        /// </summary>
+        /// <param name="render">Callback action</param>
         public static void SetRenderCallback(Action render)
         {
             if (CurrentAPI == GraphicsAPI.OpenGL)
-            {
-                OpenGLHook.AddRenderCallback(render);
-            }
+                OpenGLHook.SetRenderCallback(render);
             else
-            {
                 DirectXHook.AddRenderCallback(render);
-            }
-
         }
 
-        public static void RemoveRenderCallback(Action render)
+        /// <summary>
+        /// Unregisters a rendering callback
+        /// </summary>
+        /// <param name="render">Callback to remove</param>
+        public static void ClearRenderCallback()
         {
             if (CurrentAPI == GraphicsAPI.OpenGL)
-            {
-                OpenGLHook.RemoveRenderCallback(render);
-            }
+                OpenGLHook.ClearRenderCallback();
             else
-            {
-                DirectXHook.RemoveRenderCallback(render);
-            }
-
+                DirectXHook.ClearRenderCallback();
         }
+
+        /// <summary>
+        /// Draws a filled rectangle
+        /// </summary>
         public static void DrawRect(float x, float y, float w, float h, UIFramework.Color color)
         {
-            var apiColor = new Structs.Color
-            {
-                R = color.R / 255f,
-                G = color.G / 255f,
-                B = color.B / 255f,
-                A = color.A / 255f
-            };
+            ConvertColor(ref color, ref _tempColor);
 
             if (CurrentAPI == GraphicsAPI.OpenGL)
-            {
-                OpenGLHook.DrawFilledBox(x, y, w, h, apiColor);
-            }
+                OpenGLHook.DrawFilledBox(x, y, w, h, _tempColor);
             else
-            {
-                DirectXHook.DrawRect(x, y, w, h, apiColor);
-            }
+                DirectXHook.DrawRect(x, y, w, h, _tempColor);
         }
 
+        /// <summary>
+        /// Draws a filled rectangle using Rect structure
+        /// </summary>
         public static void DrawRect(Rect bounds, UIFramework.Color color)
         {
             DrawRect(bounds.X, bounds.Y, bounds.Width, bounds.Height, color);
         }
 
-        public static void DrawText(string text, Vector2 pos, UIFramework.Color color, Font font)
+        /// <summary>
+        /// Draws an outlined rectangle with specified border thickness
+        /// </summary>
+        /// <param name="bounds">Rectangle dimensions</param>
+        /// <param name="borderColor">Color of the border</param>
+        /// <param name="borderThickness">Thickness of the border in pixels</param>
+        public static void DrawRectOutline(Rect bounds, UIFramework.Color borderColor, float borderThickness)
         {
-            DrawText(text, pos.X, pos.Y, color, font);
+            // Convert color once and reuse
+            ConvertColor(ref borderColor, ref _tempColor);
 
-        }
-
-        public static void DrawText(string text, float x, float y, UIFramework.Color color, Font font)
-        {
-            // Convertir color al formato específico de la API
-            var apiColor = new Structs.Color
-            {
-                R = color.R / 255f,
-                G = color.G / 255f,
-                B = color.B / 255f,
-                A = color.A / 255f
-            };
-
-            var position = new Vector2(x, y);
+            // Calculate coordinates (reusing values to minimize calculations)
+            float left = bounds.X;
+            float top = bounds.Y;
+            float right = bounds.X + bounds.Width;
+            float bottom = bounds.Y + bounds.Height;
 
             switch (CurrentAPI)
             {
                 case GraphicsAPI.OpenGL:
-                    OpenGLHook.DrawText(font.GetFontId(), text, position, apiColor, font.Size);
+                    // Draw 4 lines to form the rectangle outline
+                    OpenGLHook.DrawLine(new Vector2(left, top), new Vector2(right, top), borderThickness, _tempColor); // Top
+                    OpenGLHook.DrawLine(new Vector2(right, top), new Vector2(right, bottom), borderThickness, _tempColor); // Right
+                    OpenGLHook.DrawLine(new Vector2(left, bottom), new Vector2(right, bottom), borderThickness, _tempColor); // Bottom
+                    OpenGLHook.DrawLine(new Vector2(left, top), new Vector2(left, bottom), borderThickness, _tempColor); // Left
                     break;
 
                 case GraphicsAPI.DirectX:
-                    DirectXHook.DrawText(text, position, apiColor, font.Size);
+                    // Alternative DirectX implementation
+                    DirectXHook.DrawLine(new Vector2(left, top), new Vector2(right, top), borderThickness, _tempColor);
+                    DirectXHook.DrawLine(new Vector2(right, top), new Vector2(right, bottom), borderThickness, _tempColor);
+                    DirectXHook.DrawLine(new Vector2(left, bottom), new Vector2(right, bottom), borderThickness, _tempColor);
+                    DirectXHook.DrawLine(new Vector2(left, top), new Vector2(left, bottom), borderThickness, _tempColor);
                     break;
 
                 default:
-                    throw new NotSupportedException($"API no soportada: {CurrentAPI}");
+                    throw new NotSupportedException($"API not supported: {CurrentAPI}");
             }
         }
 
+        /// <summary>
+        /// Draws text at specified position
+        /// </summary>
+        public static void DrawText(string text, Vector2 pos, UIFramework.Color color, Font font)
+        {
+            DrawText(text, pos.X, pos.Y, color, font);
+        }
+
+        /// <summary>
+        /// Draws text at specified coordinates
+        /// </summary>
+        public static void DrawText(string text, float x, float y, UIFramework.Color color, Font font)
+        {
+            ConvertColor(ref color, ref _tempColor);
+            var position = new Vector2(x, y); // Struct is small, stack allocation is fine
+
+            switch (CurrentAPI)
+            {
+                case GraphicsAPI.OpenGL:
+                    OpenGLHook.DrawText(font.GetFontId(), text, position, _tempColor, font.Size);
+                    break;
+                case GraphicsAPI.DirectX:
+                    DirectXHook.DrawText(text, position, _tempColor, font.Size);
+                    break;
+                default:
+                    throw new NotSupportedException($"API not supported: {CurrentAPI}");
+            }
+        }
+
+        /// <summary>
+        /// Draws a line between two points
+        /// </summary>
         public static void DrawLine(float x1, float y1, float x2, float y2, float thickness, UIFramework.Color color)
         {
-            var apiColor = new Structs.Color
-            {
-                R = color.R / 255f,
-                G = color.G / 255f,
-                B = color.B / 255f,
-                A = color.A / 255f
-            };
+            ConvertColor(ref color, ref _tempColor);
 
-            var startPoint = new Vector2(x1, y1);
-            var endPoint = new Vector2(x2, y2);
+            // Reuse Vector2 structs to minimize allocations
+            var start = new Vector2(x1, y1);
+            var end = new Vector2(x2, y2);
 
             if (CurrentAPI == GraphicsAPI.OpenGL)
-            {
-                OpenGLHook.DrawLine(startPoint, endPoint, thickness, apiColor);
-            }
+                OpenGLHook.DrawLine(start, end, thickness, _tempColor);
             else
-            {
-                DirectXHook.DrawLine(startPoint, endPoint, thickness, apiColor);
-            }
+                DirectXHook.DrawLine(start, end, thickness, _tempColor);
         }
 
-        public static void DrawLine(Vector2 vector21, Vector2 vector22, float thickness, UIFramework.Color color)
-        {
-            DrawLine(vector21.X, vector21.Y, vector22.X, vector22.Y, thickness, color);
-        }
-
-        // Sobrecarga para mantener compatibilidad con el código C original
-        public static void DrawLine(float x1, float y1, float x2, float y2, float thickness, bool antiAlias, UIFramework.Color color)
-        {
-            // El parámetro antiAlias se mantiene para compatibilidad pero no se usa
-            DrawLine(x1, y1, x2, y2, thickness, color);
-        }
-
+        /// <summary>
+        /// Draws a filled circle
+        /// </summary>
         public static void DrawCircle(Vector2 center, float radius, UIFramework.Color color)
         {
-            var apiColor = new Structs.Color
-            {
-                R = color.R / 255f,
-                G = color.G / 255f,
-                B = color.B / 255f,
-                A = color.A / 255f
-            };
+            ConvertColor(ref color, ref _tempColor);
 
             if (CurrentAPI == GraphicsAPI.OpenGL)
-            {
-                OpenGLHook.DrawFilledCircle(center, radius, apiColor);
-            }
-            else
-            {
-          
-            }
+                OpenGLHook.DrawFilledCircle(center, radius, _tempColor);
         }
 
-        public static void DrawRoundedRect(float x, float y, float width, float height, float v, UIFramework.Color bgColor)
-        {
-
-        }
-
-        public static void DrawRectOutline(float x, float y, float width, float height, UIFramework.Color color, float v)
-        {
-
-        }
-
-
-        public static void Shutdown()
-        {
-           
-        }
-
+        /// <summary>
+        /// Gets the current screen dimensions
+        /// </summary>
         public static Vector2 GetScreenSize()
         {
-            if (CurrentAPI == GraphicsAPI.OpenGL)
-            {
-                return new Vector2(OpenGLHook.ScreenWidth, OpenGLHook.ScreenHeight);
-            }
-            else
-            {
-                return default(Vector2);
-            }
+            return CurrentAPI == GraphicsAPI.OpenGL ?
+                new Vector2(OpenGLHook.ScreenWidth, OpenGLHook.ScreenHeight) :
+                default;
         }
 
-        public static void DrawTriangle(float x1, float y1, float x2, float y2, float x3, float y3, UIFramework.Color color)
+        /// <summary>
+        /// Draws a filled triangle
+        /// </summary>
+        public static void DrawTriangle(Vector2 v1, Vector2 v2, Vector2 v3, UIFramework.Color color)
         {
-            DrawTriangle(
-                new Vector2(x1, y1),
-                new Vector2(x2, y2),
-                new Vector2(x3, y3),
-                color
-            );
+            ConvertColor(ref color, ref _tempColor);
+            OpenGLHook.DrawTriangle(v1, v2, v3, _tempColor);
         }
 
+  
+        // ================ Texture Management ================ //
 
-        public static void DrawTriangle(Vector2 vector21, Vector2 vector22, Vector2 vector23, UIFramework.Color color)
-        {
-            var apiColor = new Structs.Color
-            {
-                R = color.R / 255f,
-                G = color.G / 255f,
-                B = color.B / 255f,
-                A = color.A / 255f
-            };
-
-            OpenGLHook.DrawTriangle(vector21, vector22, vector23, apiColor);
-        }
-
-        public static void PushClip(Rect contentRect)
-        {
-          
-        }
-
-        public static void PopClip()
-        {
-          
-        }
-
-        public static void DrawBorder(float x, float y, float width, float height, float borderThickness, UIFramework.Color borderColor)
-        {
-          
-        }
-
-        public static Vector2 TransformPoint(float x, float y)
-        {
-            Vector4 point = new Vector4(x, y, 0, 1);
-            Vector4 transformed = Vector4.Transform(point, _currentTransform);
-            return new Vector2(transformed.X, transformed.Y);
-        }
-
-        public static void PushTransform(float x, float y)
-        {
-            _transformStack.Push(_currentTransform);
-            _currentTransform *= ViewMatrix.CreateTranslation(x, y, 0);
-        }
-
-        public static void PopTransform()
-        {
-            if (_transformStack.Count > 0)
-            {
-                _currentTransform = _transformStack.Pop();
-            }
-        }
-
-        public static void DrawRectOutline(Rect bounds, UIFramework.Color borderColor, float borderThickness)
-        {
-           
-        }
-
-        // Renderer.cs - Métodos actualizados para sistema diferido
-
-        public static void ReleaseTexture(uint textureId)
-        {
-            TextureRenderer.DeleteTexture(textureId);
-        }
-
-        public static uint LoadTextureNative(string filePath, out int width, out int height, out PixelFormat format)
-        {
-            // Usar el nuevo sistema de texturas diferidas
-            return TextureRenderer.RequestTexture(filePath, out width, out height, out format);
-        }
-
+        /// <summary>
+        /// Loads a texture asynchronously
+        /// </summary>
         public static Texture2D LoadTexture(string filePath)
         {
             return new Texture2D(filePath);
         }
 
+        /// <summary>
+        /// Draws a texture within the specified rectangle
+        /// </summary>
         public static void DrawTexture(Texture2D texture, Rectangle rect, UIFramework.Color tintColor)
         {
-            // Verificar si la textura está lista antes de renderizar
-            if (texture != null && texture.IsLoaded)
+            if (texture?.IsLoaded == true)
             {
-                TextureRenderer.DrawTexture(texture, rect, tintColor);
-            }
-            else if (texture != null && !texture.IsLoaded)
-            {
-                // Opcional: dibujar un placeholder o debug info
-                Logger.Debug($"Textura no está lista: {texture.FilePath} - {texture.GetStatusInfo()}", "Renderer");
+                ConvertColor(ref tintColor, ref _tempColor);
+                TextureRenderer.DrawTexture(texture, rect, _tempColor);
             }
         }
 
-        // Método adicional para verificar si una textura está lista
-        public static bool IsTextureReady(Texture2D texture)
-        {
-            return texture != null && texture.IsLoaded;
-        }
+        // ================ Private Helpers ================ //
 
-        // Método para obtener estadísticas de texturas
-        public static string GetTextureStats()
+        /// <summary>
+        /// Converts UI color to API-specific color format without allocations
+        /// </summary>
+        private static void ConvertColor(ref UIFramework.Color src, ref Structs.Color dest)
         {
-            // Puedes agregar lógica para obtener estadísticas del TextureRenderer
-            return $"Texturas en cola: {TextureRenderer.GetPendingTextureCount()}";
-        }
-        public static void UnloadFont(uint fontId)
-        {
-   
-        }
-
-        internal static void SetClipRect(Rect contentRect)
-        {
-            throw new NotImplementedException();
+            dest.R = src.R / 255f;
+            dest.G = src.G / 255f;
+            dest.B = src.B / 255f;
+            dest.A = src.A / 255f;
         }
     }
 }

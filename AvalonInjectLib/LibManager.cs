@@ -10,7 +10,13 @@ namespace AvalonInjectLib
     {
         public static bool AllocConsole()
         {
-            return WinInterop.AllocConsole();
+            bool status = WinInterop.AllocConsole();
+
+            if (status)
+            {
+                ConsoleManager.DisableQuickEdit();
+            }
+            return status;
         }
 
         public static bool AttachConsole(int dwProcessId)
@@ -61,6 +67,17 @@ namespace AvalonInjectLib
         public static void Sleep(int dwMilliseconds)
         {
             WinInterop.Sleep((uint)dwMilliseconds);
+        }
+
+
+        /// <summary>
+        /// Obtiene el handle de un módulo (DLL) cargado en el proceso actual
+        /// </summary>
+        /// <param name="lpModuleName">Nombre del módulo. Si es null, retorna el handle del ejecutable actual</param>
+        /// <returns>Handle del módulo o IntPtr.Zero si no se encuentra</returns>
+        public static IntPtr GetModuleHandle(string lpModuleName)
+        {
+            return WinInterop.GetModuleHandle(lpModuleName);
         }
     }
 }

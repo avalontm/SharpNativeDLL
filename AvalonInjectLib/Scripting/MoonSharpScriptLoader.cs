@@ -1,4 +1,5 @@
 ﻿using AvalonInjectLib.Interfaces;
+using MoonSharp.Interpreter;
 using System.Collections.Concurrent;
 using System.Runtime;
 
@@ -14,6 +15,7 @@ namespace AvalonInjectLib.Scripting
         private readonly List<AvalonScript> _scripts = new();
         private readonly object _lockObject = new object();
         private volatile bool _isReloading = false;
+        private volatile bool _scriptsLoaded = false; // Nueva propiedad para controlar la carga
         private string _currentScriptsDirectory = "";
 
         /// <summary>
@@ -29,7 +31,12 @@ namespace AvalonInjectLib.Scripting
         /// <summary>
         /// Singleton instance of the script loader
         /// </summary>
-        public static MoonSharpScriptLoader? Instance { get; private set; }
+        public static MoonSharpScriptLoader Instance { get; private set; }
+
+        /// <summary>
+        /// Gets whether scripts are loaded and ready for execution
+        /// </summary>
+        public bool ScriptsLoaded => _scriptsLoaded;
 
         /// <summary>
         /// Initializes a new instance of the script loader
@@ -58,6 +65,9 @@ namespace AvalonInjectLib.Scripting
 
             lock (_lockObject)
             {
+                // Marcar como no cargado al iniciar
+                _scriptsLoaded = false;
+
                 // Clear previous collections
                 _scripts.Clear();
                 ScriptsByCategory.Clear();
@@ -107,6 +117,10 @@ namespace AvalonInjectLib.Scripting
 
                 // Replace the original dictionary
                 ScriptsByCategory = orderedScriptsByCategory;
+
+                // Marcar como cargado al finalizar exitosamente
+                _scriptsLoaded = true;
+                Logger.Info($"Scripts loaded successfully. {_scripts.Count} scripts available.", "MoonSharp");
             }
         }
 
@@ -134,11 +148,13 @@ namespace AvalonInjectLib.Scripting
                     LoadScripts(_currentScriptsDirectory);
                 }
 
+                InitializeAll();
                 Logger.Info($"Reload completed. {_scripts.Count} scripts loaded.", "MoonSharp");
             }
             catch (Exception ex)
             {
                 Logger.Error($"Error during reload: {ex.Message}", "MoonSharp");
+                _scriptsLoaded = false; // Marcar como no cargado en caso de error
             }
             finally
             {
@@ -153,6 +169,9 @@ namespace AvalonInjectLib.Scripting
         {
             lock (_lockObject)
             {
+                // Marcar como no cargado durante la limpieza
+                _scriptsLoaded = false;
+
                 // Clean up each script individually
                 foreach (var script in _scripts)
                 {
@@ -242,9 +261,27 @@ namespace AvalonInjectLib.Scripting
         /// <summary>
         /// Calls the Update method on all loaded scripts
         /// </summary>
+        public void InitializeAll()
+        {
+            // No ejecutar si está recargando o si los scripts no están cargados
+            if (_isReloading || !_scriptsLoaded) return;
+
+            lock (_lockObject)
+            {
+                foreach (var script in _scripts)
+                {
+                    script.Initialize();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Calls the Update method on all loaded scripts
+        /// </summary>
         public void UpdateAll()
         {
-            if (_isReloading) return; // Skip during reload
+            // No ejecutar si está recargando o si los scripts no están cargados
+            if (_isReloading || !_scriptsLoaded) return;
 
             lock (_lockObject)
             {
@@ -260,7 +297,8 @@ namespace AvalonInjectLib.Scripting
         /// </summary>
         public void DrawAll()
         {
-            if (_isReloading) return; // Skip during reload
+            // No ejecutar si está recargando o si los scripts no están cargados
+            if (_isReloading || !_scriptsLoaded) return;
 
             lock (_lockObject)
             {

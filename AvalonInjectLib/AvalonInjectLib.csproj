@@ -1,28 +1,36 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<OutputType>Library</OutputType>
+		<TargetFramework>net9.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<Charset>UTF-8</Charset>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
-  <PropertyGroup>
-	  <OutputType>Library</OutputType>
-      <TargetFramework>net9.0</TargetFramework>
-	  <ImplicitUsings>enable</ImplicitUsings>
-	  <Nullable>enable</Nullable>
-	  <Charset>UTF-8</Charset>
-	  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-  </PropertyGroup>
+		<!-- Configuración de Trimming y AOT -->
+		<IsAotCompatible>true</IsAotCompatible>
+		
+		<!-- Optimizaciones adicionales -->
+		<InvariantGlobalization>true</InvariantGlobalization>
+		<IlcOptimizationPreference>Size</IlcOptimizationPreference>
+		<IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+		<IlcDisableReflection>false</IlcDisableReflection>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <None Remove="InputMono-Bold.ttf" />
-    <None Remove="InputMono-Medium.ttf" />
-  </ItemGroup>
+	<ItemGroup>
+		<None Remove="InputMono-Bold.ttf" />
+		<None Remove="InputMono-Medium.ttf" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <EmbeddedResource Include="InputMono-Bold.ttf" />
-    <EmbeddedResource Include="InputMono-Medium.ttf" />
-  </ItemGroup>
+	<ItemGroup>
+		<EmbeddedResource Include="InputMono-Bold.ttf" />
+		<EmbeddedResource Include="InputMono-Medium.ttf" />
+	</ItemGroup>
 
-  <ItemGroup>
-	  <PackageReference Include="MoonSharp" Version="2.0.0" />
-	  <PackageReference Include="StbImageSharp" Version="2.30.15" />
-	  <PackageReference Include="StbTrueTypeSharp" Version="1.26.12" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="MoonSharp" Version="2.0.0" />
+		<PackageReference Include="StbImageSharp" Version="2.30.15" />
+		<PackageReference Include="StbTrueTypeSharp" Version="1.26.12" />
+	</ItemGroup>
 
 </Project>

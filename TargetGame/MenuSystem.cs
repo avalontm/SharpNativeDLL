@@ -7,9 +7,9 @@ namespace TargetGame
     public class MenuSystem : UIFrameworkRenderSystem
     {
         private bool _isInitialized = false;
-        private MenuList _mainMenu;
+        private MenuList? _mainMenu;
         private volatile bool _isReloading = false;
-        private string originalTitle;
+        private string? originalTitle;
 
         // Configuración de diseño
         private const float MaxMenuHeight = 500f;
@@ -78,14 +78,12 @@ namespace TargetGame
         {
             if (_isReloading) return;
             _isReloading = true;
-            new Thread(() =>
-            {
-                Thread.Sleep(100);
-                MoonSharpScriptLoader.Instance?.ReloadScripts();
-                LoadScripts();
 
-                _isReloading = false;
-            }).Start();
+            Thread.Sleep(100);
+            //MoonSharpScriptLoader.Instance?.ReloadScripts();
+            LoadScripts();
+
+            _isReloading = false;
         }
         #endregion
 
@@ -94,36 +92,54 @@ namespace TargetGame
         {
             if (!_isInitialized) return;
 
-            try
+            // Variables para el control de FPS
+            double targetFrameTime = 1000.0 / 60.0; // 60 FPS en milisegundos
+            DateTime now = DateTime.Now;
+            TimeSpan elapsed;
+
+            if (!_isReloading)
             {
-                if (!_isReloading)
+                if (InputSystem.GetKeyDown(Keys.Insert))
                 {
-                    if (InputSystem.GetKeyDown(Keys.F1))
-                    {
-                        Toggle();
-                    }
-                    else if (InputSystem.GetKeyDown(Keys.F5))
-                    {
-                        OnReloadScripts();
-                    }
+                    Toggle();
+                }
+                else if (InputSystem.GetKeyDown(Keys.Home))
+                {
+                    OnReloadScripts();
+                }
+
+                // Ejecutar el código específico a ~60 FPS
+                elapsed = now - _lastFrameTime;
+                if (elapsed.TotalMilliseconds >= targetFrameTime)
+                {
                     _mainMenu.Update();
-                    _mainMenu.Draw();
-
-                    MoonSharpScriptLoader.Instance?.UpdateAll();
-                    MoonSharpScriptLoader.Instance?.DrawAll();
+                    
+                    if (MoonSharpScriptLoader.Instance != null)
+                    {
+                        MoonSharpScriptLoader.Instance?.UpdateAll();
+                    }
+                    _lastFrameTime = now; // Actualizar el tiempo del último frame
                 }
-                else
+
+                // Procesar fuentes pendientes en cada frame de renderizado (cuando hay contexto OpenGL)
+                Font.ProcessPendingFonts();
+                
+                if (MoonSharpScriptLoader.Instance != null)
                 {
-                    DrawReloadIndicator();
+                    MoonSharpScriptLoader.Instance.DrawAll();
                 }
-
-                InputSystem.Update();
+                _mainMenu.Draw();
             }
-            catch (Exception ex)
+            else
             {
-                Logger.Error($"Error in Render: {ex.Message}", "MenuSystem");
+                DrawReloadIndicator();
             }
+
+            InputSystem.Update();
         }
+
+        // Añade este campo a tu clase
+        private DateTime _lastFrameTime = DateTime.Now;
 
         private void DrawReloadIndicator()
         {
@@ -138,15 +154,8 @@ namespace TargetGame
 
         public void Shutdown()
         {
-            try
-            {
-                MoonSharpHelper.ClearMenu(_mainMenu);
-                _isInitialized = false;
-            }
-            catch (Exception ex)
-            {
-                Logger.Error($"Error during shutdown: {ex.Message}", "MenuSystem");
-            }
+            MoonSharpHelper.ClearMenu(_mainMenu);
+            _isInitialized = false;
         }
 
         public void Toggle()
@@ -159,6 +168,8 @@ namespace TargetGame
         public int ScriptCount => MoonSharpScriptLoader.Instance?.Scripts.Count ?? 0;
         public int CategoryCount => MoonSharpHelper.GetCategoryCount();
         public bool IsReloading => _isReloading;
+        public bool IsInitialized => _isInitialized;
+        public MenuList MainMenu => _mainMenu;
         #endregion
     }
 }

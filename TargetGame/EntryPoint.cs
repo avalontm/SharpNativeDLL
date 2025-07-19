@@ -1,108 +1,212 @@
 ﻿using AvalonInjectLib;
 using AvalonInjectLib.Scripting;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using static AvalonInjectLib.Structs;
 
 namespace TargetGame
 {
-    public class EntryPoint
+    public unsafe class EntryPoint
     {
         static AvalonEngine Engine { set; get; } = new AvalonEngine();
-        public static MoonSharpScriptLoader _luaLoader { private set; get; }
+        public static MoonSharpScriptLoader? _luaLoader { private set; get; }
         static MenuSystem menuSystem = new MenuSystem();
+
+        // Control de estado mejorado
+        private static volatile bool _isRunning = false;
+        private static volatile bool _isInitialized = false;
+        private static IntPtr _mainThreadHandle = IntPtr.Zero;
 
         // Constantes
         const uint DLL_PROCESS_ATTACH = 1;
+        const uint DLL_THREAD_ATTACH = 2;
+        const uint DLL_THREAD_DETACH = 3;
+        const uint DLL_PROCESS_DETACH = 4;
 
-        [UnmanagedCallersOnly(EntryPoint = "DllMain", CallConvs = new[] { typeof(CallConvStdcall) })]
+        [UnmanagedCallersOnly(EntryPoint = "DllMain")]
         public static bool DllMain(nint hModule, uint ul_reason_for_call, nint lpReserved)
         {
-            if (ul_reason_for_call == DLL_PROCESS_ATTACH)
+            switch (ul_reason_for_call)
             {
-                LibManager.DisableThreadLibraryCalls(hModule);
-                CreateInjectionThread();
+                case DLL_PROCESS_ATTACH:
+                    return HandleProcessAttach(hModule);
+
+                case DLL_PROCESS_DETACH:
+                case DLL_THREAD_ATTACH:
+                case DLL_THREAD_DETACH:
+                    break;
             }
             return true;
         }
 
-        private static void CreateInjectionThread()
+        private static bool HandleProcessAttach(nint hModule)
         {
-            IntPtr threadHandle = ProcessManager.CreateThread(InjectionThread);
+            // Inicialización MÍNIMA en DllMain para evitar bloqueos
+            if (!LibManager.DisableThreadLibraryCalls(hModule))
+            {
+                // No crítico, continuar
+            }
 
-            if (threadHandle != IntPtr.Zero)
-                ProcessManager.CloseThread(threadHandle);
+            // Crear thread nativo inmediatamente usando TU método
+            _mainThreadHandle = ProcessManager.CreateNativeThread(&MainInjectionThread);
+
+            if (_mainThreadHandle == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            // Salir de DllMain INMEDIATAMENTE
+            return true;
         }
 
-        private static void InjectionThread()
+        [UnmanagedCallersOnly]
+        private static int MainInjectionThread(IntPtr param)
+        {
+            InitializeConsole();
+
+            Logger.Info("Thread principal iniciado");
+
+            if (!Initialize())
+            {
+                Logger.Error("Error en la inicialización");
+                return 0;
+            }
+
+            _isInitialized = true;
+            _isRunning = true;
+
+            var startTime = DateTime.UtcNow; // Momento de inicio
+
+            while (_isRunning)
+            {
+                try
+                {
+                    _luaLoader.UpdateAll();
+
+                    var elapsed = DateTime.UtcNow - startTime;
+                    Console.WriteLine($"Tiempo transcurrido: {elapsed.TotalSeconds:F1} segundos");
+                }
+                catch (Exception ex)
+                {
+                    WinDialog.ShowFatalError("Error", ex.Message);
+                }
+                LibManager.Sleep(1000);
+            }
+
+            Logger.Info("Thread principal terminado");
+
+            return 1;
+        }
+
+
+        private static bool Initialize()
+        {
+            InitializeScripts();
+
+            var process = ProcessManager.AttachToSelf();
+            if (process == null)
+            {
+                Logger.Error("No se pudo attachear al proceso actual");
+                return false;
+            }
+
+            Engine.SetProcess(process);
+            Logger.Info($"Proceso - PID: {process.ProcessId:X8}, Handle: {process.Handle:X8}, ModuleBase: {process.ModuleBase:X8}");
+
+            /*
+            // 3. Inicializar renderer y menú de manera MÁS SEGURA
+            if (!InitializeGraphicsSafely())
+            {
+                Logger.Warning("Gráficos no disponibles, continuando en modo sin interfaz");
+                // No es crítico - el cheat puede funcionar sin UI
+            }
+            */
+
+            Logger.Info("Inicialización completada exitosamente");
+            return true;
+        }
+
+        private static bool InitializeGraphicsSafely()
+        {
+            // Detectar API disponible de manera más conservadora
+            Renderer.CurrentAPI = DetectSafeGraphicsAPI();
+
+            if (Renderer.CurrentAPI == Renderer.GraphicsAPI.None)
+            {
+                Logger.Info("No se detectó API de gráficos, modo consola únicamente");
+                return false;
+            }
+
+            if (!Renderer.InitializeGraphics()) // 2 segundos máximo
+            {
+                Logger.Error("Error inicializando gráficos");
+                return false;
+            }
+
+            menuSystem.Initialize();
+            Renderer.SetRenderCallback(menuSystem.Render);
+
+            // 4. Inicializar scripts después de gráficos
+            _luaLoader?.InitializeAll();
+
+            return true;
+        }
+
+        private static Renderer.GraphicsAPI DetectSafeGraphicsAPI()
+        {
+            // Verificar OpenGL de manera más segura
+            if (IsModuleLoaded("opengl32.dll") || IsModuleLoaded("opengl32"))
+            {
+                return Renderer.GraphicsAPI.OpenGL;
+            }
+
+            // Verificar DirectX
+            if (IsModuleLoaded("d3d11.dll") || IsModuleLoaded("d3d9.dll") || IsModuleLoaded("dxgi.dll"))
+            {
+                return Renderer.GraphicsAPI.DirectX;
+            }
+
+            return Renderer.GraphicsAPI.None;
+        }
+
+        private static bool IsModuleLoaded(string moduleName)
         {
             try
             {
-                InitializeConsole();
-                InitializeScripts();
-                FindGameProcess();
-                MainLoop();
-
+                return LibManager.GetModuleHandle(moduleName) != IntPtr.Zero;
             }
-            catch (Exception ex)
+            catch
             {
-                WinDialog.ShowErrorDialog("Error crítico", ex.ToString());
+                return false;
             }
         }
+
 
         private static void InitializeScripts()
         {
             _luaLoader = new MoonSharpScriptLoader(Engine);
-
-            // Carga y inicializa todos los scripts Lua del directorio "Scripts"
             _luaLoader.LoadScripts("Scripts");
+            Logger.Info("Scripts inicializados correctamente");
         }
-
 
         private static void InitializeConsole()
         {
-            // Establecer la codificación de salida a UTF-8 (65001)
+            // Establecer codificación UTF-8
             LibManager.SetConsoleOutputCP(65001);
-
-            //if (LibManager.AttachConsole(-1))
             LibManager.AllocConsole();
 
-            Console.Title = "AvalonInjectLib";
-            Console.WriteLine("=== Universal Memory Cheat - V1.0.0.0 ===");
+            Console.Title = "AvalonInjectLib - Universal Memory Cheat";
+            Console.WriteLine("=== Universal Memory Cheat - V1.0.0.1 ===");
+            Console.WriteLine("Estado: Inyectado correctamente");
+            Console.WriteLine("Presiona INSERT para toggle del menú");
+            Console.WriteLine("Presiona END para cerrar el cheat");
+            Console.WriteLine("Presiona F1 para debug info");
+            Console.WriteLine("=====================================");
+
+            Logger.Info("Consola inicializada");
         }
 
-        private static void FindGameProcess()
-        {
-            var info = InjectionInfo.GetCurrentProcessInfo();
-            Logger.Info($"ProcessName: {info.ProcessName}");
-
-            var process = ProcessManager.Create(info.ProcessName);
-
-            Engine.SetProcess(process);
-
-            if (process == null)
-            {
-                throw new Exception("Proceso del juego no encontrado");
-            }
-
-            Logger.Info($"Proceso encontrado - PID: {process.ProcessId:X8}", "EntryPoint");
-            Logger.Info($"Handle encontrado - Handle: {process.Handle:X8}", "EntryPoint");
-            Logger.Info($"Modulo Base - moduleBase: {process.ModuleBase:X8}", "EntryPoint");
-
-            //MemoryUpdate();
-
-            Renderer.CurrentAPI = Renderer.GraphicsAPI.OpenGL;
-            Renderer.InitializeGraphics(process.ProcessId);
-            menuSystem.Initialize();
-            Renderer.SetRenderCallback(menuSystem.Render);
-        }
-
-        private static void MainLoop()
-        {
-            while (true)
-            {
-                LibManager.Sleep(100);
-            }
-        }
-
+        // Propiedades útiles para debugging
+        public static bool IsInitialized => _isInitialized;
+        public static bool IsRunning => _isRunning;
     }
 }

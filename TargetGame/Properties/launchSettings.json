@@ -3,14 +3,14 @@
     "AOT Build x64": {
       "commandName": "Executable",
       "executablePath": "powershell.exe",
-      "commandLineArgs": "-NoExit -Command \"dotnet publish -r win-x64 -c Release --self-contained true -p:PublishAot=true; if ($LASTEXITCODE -ne 0) { Write-Host '## ERROR EN BUILD x64 ##' -ForegroundColor Red; Read-Host 'Presiona Enter para continuar...' } else { Write-Host '## BUILD x64 COMPLETADO ##' -ForegroundColor Green; Read-Host 'Presiona Enter para continuar...' }\"",
+      "commandLineArgs": "-NoExit -Command \"dotnet publish -r win-x64 -c Release -p:PublishAot=true; if ($LASTEXITCODE -ne 0) { Write-Host '## ERROR EN BUILD x64 ##' -ForegroundColor Red; Read-Host 'Presiona Enter para continuar...' } else { Write-Host '## BUILD x64 COMPLETADO ##' -ForegroundColor Green; Read-Host 'Presiona Enter para continuar...' }\"",
       "workingDirectory": "$(ProjectDir)",
       "useShellExecute": false
     },
     "AOT Build x86": {
       "commandName": "Executable",
       "executablePath": "powershell.exe",
-      "commandLineArgs": "-NoExit -Command \"dotnet publish -r win-x86 -c Release --self-contained true -p:PublishAot=true; if ($LASTEXITCODE -ne 0) { Write-Host '## ERROR EN BUILD x86 ##' -ForegroundColor Red; Read-Host 'Presiona Enter para continuar...' } else { Write-Host '## BUILD x86 COMPLETADO ##' -ForegroundColor Green; Read-Host 'Presiona Enter para continuar...' }\"",
+      "commandLineArgs": "-NoExit -Command \"dotnet publish -r win-x86 -c Release -p:PublishAot=true; if ($LASTEXITCODE -ne 0) { Write-Host '## ERROR EN BUILD x86 ##' -ForegroundColor Red; Read-Host 'Presiona Enter para continuar...' } else { Write-Host '## BUILD x86 COMPLETADO ##' -ForegroundColor Green; Read-Host 'Presiona Enter para continuar...' }\"",
       "workingDirectory": "$(ProjectDir)",
       "useShellExecute": false
     }

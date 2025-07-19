@@ -196,6 +196,8 @@ namespace AvalonInjectLib.UIFramework
         {
             base.Update();
 
+            if (!Visible) return;
+
             // Actualizar contenido personalizado
             if (UseCustomContent && Content != null)
             {

@@ -202,9 +202,9 @@ namespace TargetGame
             return textInfo.ToTitleCase(name.ToLower());
         }
 
-        public static void ClearMenu(MenuList menu)
+        public static void ClearMenu(MenuList? menu)
         {
-            menu.ClearItems();
+            menu?.ClearItems();
             ClearExistingData();
         }
 

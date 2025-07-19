@@ -1,6 +1,5 @@
 ﻿using AvalonInjectLib.Interfaces;
 using MoonSharp.Interpreter;
-using MoonSharp.Interpreter.Interop;
 
 namespace AvalonInjectLib.Scripting
 {
@@ -13,17 +12,9 @@ namespace AvalonInjectLib.Scripting
         {
             Script = new AvalonScript(scriptPath);
             _script = new Script(CoreModules.Preset_Default | CoreModules.LoadMethods);
-            ConfigureForAOT();
 
             // Default category from path or "General"
             Script.Category = categoryFromPath ?? "General";
-        }
-
-        private void ConfigureForAOT()
-        {
-            UserData.RegistrationPolicy = InteropRegistrationPolicy.Automatic;
-            var descriptor = new StandardUserDataDescriptor(typeof(AvalonEngine), InteropAccessMode.Preoptimized);
-            UserData.RegisterType(descriptor);
         }
 
         public void Initialize(IAvalonEngine engine)
@@ -43,7 +34,7 @@ namespace AvalonInjectLib.Scripting
                 ProcessScriptValue();
 
                 Script.SetLua(_script);
-                Script.Initialize(engine);
+
             }
             catch (Exception ex)
             {
@@ -97,6 +88,9 @@ namespace AvalonInjectLib.Scripting
                 Script.Name = nameDyn.String;
             else
                 Script.Name = Path.GetFileNameWithoutExtension(Script.FilePath);
+
+
+            Script.IsEnabled = true;
         }
 
         private void ProcessScriptValue()
