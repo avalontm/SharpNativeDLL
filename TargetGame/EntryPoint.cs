@@ -1,20 +1,25 @@
 ﻿using AvalonInjectLib;
 using AvalonInjectLib.Scripting;
+using System;
 using System.Runtime.InteropServices;
-using static AvalonInjectLib.Structs;
+using System.Threading;
+using static AvalonInjectLib.ProcessManager;
 
 namespace TargetGame
 {
     public unsafe class EntryPoint
-    {
+    {  
+        // Delegado para evitar GC
+        private static ThreadStartDelegate _mainThreadDelegate;
+        private static IntPtr _mainThreadHandle = IntPtr.Zero;
+
         static AvalonEngine Engine { set; get; } = new AvalonEngine();
         public static MoonSharpScriptLoader? _luaLoader { private set; get; }
         static MenuSystem menuSystem = new MenuSystem();
 
         // Control de estado mejorado
-        private static volatile bool _isRunning = false;
-        private static volatile bool _isInitialized = false;
-        private static IntPtr _mainThreadHandle = IntPtr.Zero;
+        private static bool _isRunning = false;
+        private static bool _isInitialized = false;
 
         // Constantes
         const uint DLL_PROCESS_ATTACH = 1;
@@ -28,6 +33,7 @@ namespace TargetGame
             switch (ul_reason_for_call)
             {
                 case DLL_PROCESS_ATTACH:
+                    LibManager.DisableThreadLibraryCalls(hModule);
                     return HandleProcessAttach(hModule);
 
                 case DLL_PROCESS_DETACH:
@@ -40,61 +46,59 @@ namespace TargetGame
 
         private static bool HandleProcessAttach(nint hModule)
         {
-            // Inicialización MÍNIMA en DllMain para evitar bloqueos
-            if (!LibManager.DisableThreadLibraryCalls(hModule))
-            {
-                // No crítico, continuar
-            }
+            // Crear delegado e iniciarlo
+            _mainThreadDelegate = new ThreadStartDelegate(MainInjectionThread);
 
+            // Obtener puntero nativo del delegado
+            IntPtr funcPtr = Marshal.GetFunctionPointerForDelegate(_mainThreadDelegate);
             // Crear thread nativo inmediatamente usando TU método
-            _mainThreadHandle = ProcessManager.CreateNativeThread(&MainInjectionThread);
+            _mainThreadHandle = ProcessManager.CreateNativeThread(funcPtr, hModule);
 
-            if (_mainThreadHandle == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            // Salir de DllMain INMEDIATAMENTE
-            return true;
+            return _mainThreadHandle != IntPtr.Zero;
         }
 
-        [UnmanagedCallersOnly]
-        private static int MainInjectionThread(IntPtr param)
+        private static uint MainInjectionThread(IntPtr param)
         {
-            InitializeConsole();
-
-            Logger.Info("Thread principal iniciado");
-
-            if (!Initialize())
+            try
             {
-                Logger.Error("Error en la inicialización");
+                // Registrar el thread principal
+                PreventUnload(param);
+
+                // Inicializar consola y logger
+                InitializeConsole();
+
+                Logger.Info("Thread principal iniciado");
+
+                if (!Initialize())
+                {
+                    Logger.Error("Error en la inicialización");
+                    return 0;
+                }
+
+                _isInitialized = true;
+                _isRunning = true;
+
+                long count = 0;
+
+                while (_isRunning)
+                {
+                    //_luaLoader.UpdateAll();
+
+                    Logger.Debug($"Tiempo transcurrido: {count++} segundos", "EntryPoint");
+
+                    LibManager.Sleep(16);
+                }
+
+                Logger.Info("Thread principal terminado");
+
+                return 1;
+            }
+            catch (Exception ex)
+            {
+                WinDialog.ShowFatalError("Error", ex.Message);
                 return 0;
+
             }
-
-            _isInitialized = true;
-            _isRunning = true;
-
-            var startTime = DateTime.UtcNow; // Momento de inicio
-
-            while (_isRunning)
-            {
-                try
-                {
-                    _luaLoader.UpdateAll();
-
-                    var elapsed = DateTime.UtcNow - startTime;
-                    Console.WriteLine($"Tiempo transcurrido: {elapsed.TotalSeconds:F1} segundos");
-                }
-                catch (Exception ex)
-                {
-                    WinDialog.ShowFatalError("Error", ex.Message);
-                }
-                LibManager.Sleep(1000);
-            }
-
-            Logger.Info("Thread principal terminado");
-
-            return 1;
         }
 
 

@@ -1,8 +1,6 @@
 ﻿using AvalonInjectLib.Scripting;
 using AvalonInjectLib.UIFramework;
-using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 
 namespace TargetGame
 {

@@ -1,28 +1,15 @@
 ﻿using System;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace AvalonInjectLib
 {
     public unsafe static class ProcessManager
     {
-        private const uint ACCESS_MASK = 0x001F0FFF; // PROCESS_ALL_ACCESS
-
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        public delegate uint ThreadProc(IntPtr lpParameter);
-        // Delegado para threads administrados (Action)
-        public delegate void ManagedThreadProc();
+        public delegate uint ThreadStartDelegate(IntPtr lpParam);
 
-        static readonly string _baseDirectory;
-
-        static ProcessManager()
-        {
-            // Use AppContext.BaseDirectory instead of Assembly.Location
-            _baseDirectory = AppContext.BaseDirectory;
-
-            // If you need the entry assembly location for specific cases:
-            // var assembly = Assembly.GetEntryAssembly();
-            // _assemblyPath = assembly?.Location ?? string.Empty;
-        }
+        private const uint ACCESS_MASK = 0x001F0FFF; // PROCESS_ALL_ACCESS
 
         public static IntPtr GetMainWindowHandle(uint processId)
         {
@@ -253,20 +240,31 @@ namespace AvalonInjectLib
         /// </summary>
         /// <param name="threadProc">Puntero a función no administrada.</param>
         /// <param name="parameter">Parámetro a pasar al hilo.</param>
-        /// <param name="suspended">Si se crea suspendido.</param>
         /// <returns>Handle del hilo.</returns>
-        public static IntPtr CreateNativeThread(delegate* unmanaged<IntPtr, int> threadProc, IntPtr parameter = default, bool suspended = false)
+        public static IntPtr CreateNativeThread(IntPtr lpStartAddress, IntPtr lpParameter = default, uint dwCreationFlags = 0)
         {
-            const uint CREATE_SUSPENDED = 0x00000004;
-            uint flags = suspended ? CREATE_SUSPENDED : 0;
 
             return WinInterop.CreateThread(
                 IntPtr.Zero,
                 0,
-                threadProc,
-                parameter,
-                flags,
+                lpStartAddress,
+                lpParameter,
+                dwCreationFlags,
                 out _);
+        }
+
+        public static void PreventUnload(IntPtr hModule)
+        {
+            StringBuilder path = new StringBuilder(260);
+            if (WinInterop.GetModuleFileName(hModule, path, path.Capacity) > 0)
+            {
+                IntPtr result = WinInterop.LoadLibrary(path.ToString());
+                if (result == IntPtr.Zero)
+                {
+                    int err = Marshal.GetLastWin32Error();
+                    Logger.Error($"Error al prevenir unload del módulo: {err}");
+                }
+            }
         }
 
         /// <summary>

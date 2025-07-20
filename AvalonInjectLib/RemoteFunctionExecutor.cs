@@ -1,34 +1,69 @@
-﻿using System.Runtime.CompilerServices;
+﻿using AvalonInjectLib.Exteptions;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Buffers;
+using System.Collections.Concurrent;
 
 namespace AvalonInjectLib
 {
-    public class RemoteFunctionException : Exception
-    {
-        public string Operation { get; }
-        public int? ErrorCode { get; }
-
-        public RemoteFunctionException(string operation, string message) : base(message)
-        {
-            Operation = operation;
-        }
-
-        public RemoteFunctionException(string operation, string message, int errorCode) : base(message)
-        {
-            Operation = operation;
-            ErrorCode = errorCode;
-        }
-
-        public RemoteFunctionException(string operation, string message, Exception innerException) : base(message, innerException)
-        {
-            Operation = operation;
-        }
-    }
-
     public static class RemoteFunctionExecutor
     {
         private static readonly bool Is64Bit = IntPtr.Size == 8;
         public static int TimeoutMs { get; set; } = 5000;
+
+        // Cache para shellcode reutilizable
+        private static readonly ConcurrentDictionary<string, byte[]> ShellcodeCache = new();
+
+        // Pool de arrays para reutilización
+        private static readonly ArrayPool<byte> ByteArrayPool = ArrayPool<byte>.Shared;
+        private static readonly ArrayPool<Parameter> ParameterArrayPool = ArrayPool<Parameter>.Shared;
+
+        // Cache de arrays de bytes comúnes (0, 1, 2, 3, 4 parámetros)
+        private static readonly byte[][] CachedPrologueX64 = new byte[5][];
+        private static readonly byte[][] CachedPrologueX86 = new byte[5][];
+
+        // Buffers pre-calculados para operaciones comunes
+        private static readonly byte[] MovRaxBytes = { 0x48, 0xB8 };
+        private static readonly byte[] CallRaxBytes = { 0xFF, 0xD0 };
+        private static readonly byte[] EpilogueX64Bytes = { 0x48, 0x83, 0xC4, 0x28, 0xC3 };
+        private static readonly byte[] PrologueX86Bytes = { 0x55, 0x89, 0xE5 };
+        private static readonly byte[] EpilogueX86Bytes = { 0x89, 0xEC, 0x5D, 0xC3 };
+
+        // Cache para conversión de parámetros
+        private static readonly ThreadLocal<Dictionary<Type, ParamType>> TypeMappingCache =
+            new(() => new Dictionary<Type, ParamType>
+            {
+                [typeof(int)] = ParamType.Int32,
+                [typeof(float)] = ParamType.Float,
+                [typeof(double)] = ParamType.Double,
+                [typeof(bool)] = ParamType.Bool,
+                [typeof(byte)] = ParamType.Byte,
+                [typeof(short)] = ParamType.Int16,
+                [typeof(long)] = ParamType.Int64,
+                [typeof(uint)] = ParamType.UInt32,
+                [typeof(IntPtr)] = ParamType.IntPtr,
+                [typeof(string)] = ParamType.String
+            });
+
+        static RemoteFunctionExecutor()
+        {
+            // Pre-calcular prólogos comunes para evitar allocaciones
+            InitializeCachedPrologues();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void InitializeCachedPrologues()
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                // X64 prólogos con shadow space apropiado
+                var shadowSpace = Math.Max(32, (i + 3) / 4 * 16); // Align to 16 bytes
+                CachedPrologueX64[i] = new byte[] { 0x48, 0x83, 0xEC, (byte)shadowSpace };
+
+                // X86 prólogos simples
+                CachedPrologueX86[i] = (byte[])PrologueX86Bytes.Clone();
+            }
+        }
 
         // APIs de Windows para inyección de código
         [DllImport("kernel32.dll", SetLastError = true)]
@@ -87,6 +122,7 @@ namespace AvalonInjectLib
             }
         }
 
+        // Factory methods optimizados (sin allocaciones adicionales)
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Parameter Int(int value) => new(ParamType.Int32, value);
 
@@ -94,7 +130,7 @@ namespace AvalonInjectLib
         public static Parameter Ptr(IntPtr value) => new(ParamType.IntPtr, value);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static Parameter Str(string value) => new(ParamType.String, value ?? "");
+        public static Parameter Str(string value) => new(ParamType.String, value ?? string.Empty);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Parameter Float(float value) => new(ParamType.Float, value);
@@ -154,25 +190,26 @@ namespace AvalonInjectLib
         }
 
         /// <summary>
-        /// Ejecuta una función con conversión automática de parámetros
+        /// Ejecuta una función con conversión automática de parámetros (optimizado para memoria)
         /// </summary>
         public static bool CallFunction(IntPtr hProcess, IntPtr functionAddr, params object[] parameters)
         {
+            if (functionAddr == IntPtr.Zero)
+                throw new RemoteFunctionException("Validation", "Dirección de función inválida (IntPtr.Zero)");
+
+            if (parameters == null || parameters.Length == 0)
+                return CallFunction(hProcess, functionAddr, Array.Empty<Parameter>());
+
+            // Usar pool de arrays para evitar allocaciones
+            var typedParams = ParameterArrayPool.Rent(parameters.Length);
             try
             {
-                if (functionAddr == IntPtr.Zero)
-                    throw new RemoteFunctionException("Validation", "Dirección de función inválida (IntPtr.Zero)");
-
-                if (parameters == null || parameters.Length == 0)
-                    return CallFunction(hProcess, functionAddr, Array.Empty<Parameter>());
-
-                // Convertir objetos a parámetros tipados
-                var typedParams = new Parameter[parameters.Length];
+                // Convertir objetos a parámetros tipados sin allocaciones adicionales
                 for (int i = 0; i < parameters.Length; i++)
                 {
                     try
                     {
-                        typedParams[i] = ConvertToParameter(parameters[i]);
+                        typedParams[i] = ConvertToParameterOptimized(parameters[i]);
                     }
                     catch (Exception ex)
                     {
@@ -181,7 +218,9 @@ namespace AvalonInjectLib
                     }
                 }
 
-                return CallFunction(hProcess, functionAddr, typedParams);
+                // Crear span para evitar crear nuevo array
+                var paramSpan = new ReadOnlySpan<Parameter>(typedParams, 0, parameters.Length);
+                return CallFunction(hProcess, functionAddr, paramSpan.ToArray()); // Necesario para la firma actual
             }
             catch (RemoteFunctionException)
             {
@@ -191,34 +230,50 @@ namespace AvalonInjectLib
             {
                 throw new RemoteFunctionException("CallFunction", "Error inesperado en CallFunction con conversión automática", ex);
             }
+            finally
+            {
+                ParameterArrayPool.Return(typedParams, true);
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Parameter ConvertToParameter(object value)
+        private static Parameter ConvertToParameterOptimized(object value)
         {
-            return value switch
+            if (value == null) return Str(string.Empty);
+
+            var type = value.GetType();
+            var typeMapping = TypeMappingCache.Value;
+
+            if (typeMapping.TryGetValue(type, out var paramType))
             {
-                int intVal => Int(intVal),
-                float floatVal => Float(floatVal),
-                double doubleVal => Double(doubleVal),
-                bool boolVal => Bool(boolVal),
-                byte byteVal => Byte(byteVal),
-                short shortVal => Short(shortVal),
-                long longVal => Long(longVal),
-                uint uintVal => UInt(uintVal),
-                IntPtr ptrVal => Ptr(ptrVal),
-                string strVal => Str(strVal),
-                null => Str(""),
-                _ => throw new ArgumentException($"Tipo no soportado: {value.GetType().Name}")
-            };
+                return paramType switch
+                {
+                    ParamType.Int32 => Int((int)value),
+                    ParamType.Float => Float((float)value),
+                    ParamType.Double => Double((double)value),
+                    ParamType.Bool => Bool((bool)value),
+                    ParamType.Byte => Byte((byte)value),
+                    ParamType.Int16 => Short((short)value),
+                    ParamType.Int64 => Long((long)value),
+                    ParamType.UInt32 => UInt((uint)value),
+                    ParamType.IntPtr => Ptr((IntPtr)value),
+                    ParamType.String => Str((string)value),
+                    _ => throw new ArgumentException($"Tipo no soportado: {type.Name}")
+                };
+            }
+
+            throw new ArgumentException($"Tipo no soportado: {type.Name}");
         }
 
-        // Ejecución remota usando inyección de código
+        // Ejecución remota usando inyección de código con cache
         private static bool ExecuteFunctionRemote(IntPtr hProcess, IntPtr functionAddr, Parameter[] parameters)
         {
             try
             {
-                byte[] shellcode = CreateShellcode(functionAddr, parameters);
+                // Crear clave de cache basada en función y número de parámetros
+                string cacheKey = $"{functionAddr:X}_{parameters.Length}_{string.Join("_", parameters.Select(p => p.Type))}";
+
+                byte[] shellcode = ShellcodeCache.GetOrAdd(cacheKey, _ => CreateShellcode(functionAddr, parameters));
 
                 IntPtr remoteMemory = VirtualAllocEx(hProcess, IntPtr.Zero, (uint)shellcode.Length,
                     MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
@@ -269,7 +324,7 @@ namespace AvalonInjectLib
             }
         }
 
-        // Ejecución local directa sin delegates
+        // Ejecución local directa sin delegates (sin cambios, ya estaba optimizada)
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe bool ExecuteFunctionDirect(IntPtr functionAddr, Parameter[] parameters)
         {
@@ -293,8 +348,6 @@ namespace AvalonInjectLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe bool ExecuteX64Direct(IntPtr functionAddr, Parameter[] parameters)
         {
-            // Implementación para x64 usando calli
-            // Nota: Esto requiere unsafe context y es altamente dependiente de la arquitectura
             switch (parameters.Length)
             {
                 case 0:
@@ -309,7 +362,6 @@ namespace AvalonInjectLib
                     var p2_2 = GetParameterValue(parameters[1]);
                     ((delegate*<IntPtr, IntPtr, void>)functionAddr)(p1_2, p2_2);
                     return true;
-                // Agregar más casos según sea necesario
                 default:
                     throw new RemoteFunctionException("ExecuteX64Direct", $"Demasiados parámetros: {parameters.Length} (máximo 2 en esta implementación)");
             }
@@ -318,7 +370,6 @@ namespace AvalonInjectLib
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe bool ExecuteX86Direct(IntPtr functionAddr, Parameter[] parameters)
         {
-            // Implementación para x86 usando calli
             switch (parameters.Length)
             {
                 case 0:
@@ -333,7 +384,6 @@ namespace AvalonInjectLib
                     var p2_2 = GetParameterValue(parameters[1]);
                     ((delegate* unmanaged[Stdcall]<IntPtr, IntPtr, void>)functionAddr)(p1_2, p2_2);
                     return true;
-                // Agregar más casos según sea necesario
                 default:
                     throw new RemoteFunctionException("ExecuteX86Direct", $"Demasiados parámetros: {parameters.Length} (máximo 2 en esta implementación)");
             }
@@ -364,98 +414,140 @@ namespace AvalonInjectLib
         {
             if (Is64Bit)
             {
-                return CreateX64Shellcode(functionAddr, parameters);
+                return CreateX64ShellcodeOptimized(functionAddr, parameters);
             }
             else
             {
-                return CreateX86Shellcode(functionAddr, parameters);
+                return CreateX86ShellcodeOptimized(functionAddr, parameters);
             }
         }
 
-        private static byte[] CreateX64Shellcode(IntPtr functionAddr, Parameter[] parameters)
+        private static byte[] CreateX64ShellcodeOptimized(IntPtr functionAddr, Parameter[] parameters)
         {
-            List<byte> code = new List<byte>();
+            int estimatedSize = 64 + (parameters.Length * 16); // Estimación más precisa
+            byte[] buffer = ByteArrayPool.Rent(estimatedSize);
+            int position = 0;
 
-            // Prólogo: salvar registros
-            code.AddRange(new byte[] { 0x48, 0x83, 0xEC, 0x28 }); // sub rsp, 40 (shadow space)
-
-            // Cargar parámetros en registros y stack
-            for (int i = 0; i < parameters.Length; i++)
+            try
             {
-                LoadParameterX64(code, parameters[i], i);
+                // Usar prólogo pre-calculado
+                var prologue = CachedPrologueX64[Math.Min(parameters.Length, 4)];
+                prologue.CopyTo(buffer, position);
+                position += prologue.Length;
+
+                // Cargar parámetros
+                for (int i = 0; i < parameters.Length; i++)
+                {
+                    position += LoadParameterX64Optimized(buffer.AsSpan(position), parameters[i], i);
+                }
+
+                // Llamar función (usar arrays pre-calculados)
+                MovRaxBytes.CopyTo(buffer, position);
+                position += MovRaxBytes.Length;
+
+                BitConverter.GetBytes(functionAddr.ToInt64()).CopyTo(buffer, position);
+                position += 8;
+
+                CallRaxBytes.CopyTo(buffer, position);
+                position += CallRaxBytes.Length;
+
+                // Epílogo pre-calculado
+                EpilogueX64Bytes.CopyTo(buffer, position);
+                position += EpilogueX64Bytes.Length;
+
+                // Crear array del tamaño exacto
+                var result = new byte[position];
+                buffer.AsSpan(0, position).CopyTo(result);
+                return result;
             }
-
-            // Llamar función
-            code.AddRange(new byte[] { 0x48, 0xB8 }); // mov rax, immediate64
-            code.AddRange(BitConverter.GetBytes(functionAddr.ToInt64()));
-            code.AddRange(new byte[] { 0xFF, 0xD0 }); // call rax
-
-            // Epílogo
-            code.AddRange(new byte[] { 0x48, 0x83, 0xC4, 0x28 }); // add rsp, 40
-            code.Add(0xC3); // ret
-
-            return code.ToArray();
+            finally
+            {
+                ByteArrayPool.Return(buffer);
+            }
         }
 
-        private static byte[] CreateX86Shellcode(IntPtr functionAddr, Parameter[] parameters)
+        private static byte[] CreateX86ShellcodeOptimized(IntPtr functionAddr, Parameter[] parameters)
         {
-            List<byte> code = new List<byte>();
+            int estimatedSize = 32 + (parameters.Length * 8);
+            byte[] buffer = ByteArrayPool.Rent(estimatedSize);
+            int position = 0;
 
-            // Prólogo
-            code.AddRange(new byte[] { 0x55 }); // push ebp
-            code.AddRange(new byte[] { 0x89, 0xE5 }); // mov ebp, esp
-
-            // Push parámetros en orden reverso (stdcall convention)
-            for (int i = parameters.Length - 1; i >= 0; i--)
+            try
             {
-                LoadParameterX86(code, parameters[i]);
+                // Prólogo pre-calculado
+                PrologueX86Bytes.CopyTo(buffer, position);
+                position += PrologueX86Bytes.Length;
+
+                // Push parámetros en orden reverso
+                for (int i = parameters.Length - 1; i >= 0; i--)
+                {
+                    position += LoadParameterX86Optimized(buffer.AsSpan(position), parameters[i]);
+                }
+
+                // Llamar función
+                buffer[position++] = 0xB8; // mov eax, immediate32
+                BitConverter.GetBytes(functionAddr.ToInt32()).CopyTo(buffer, position);
+                position += 4;
+                buffer[position++] = 0xFF; // call eax
+                buffer[position++] = 0xD0;
+
+                // Limpiar stack si es stdcall
+                if (parameters.Length > 0)
+                {
+                    buffer[position++] = 0x83; // add esp, paramCount*4
+                    buffer[position++] = 0xC4;
+                    buffer[position++] = (byte)(parameters.Length * 4);
+                }
+
+                // Epílogo pre-calculado
+                EpilogueX86Bytes.CopyTo(buffer, position);
+                position += EpilogueX86Bytes.Length;
+
+                var result = new byte[position];
+                buffer.AsSpan(0, position).CopyTo(result);
+                return result;
             }
-
-            // Llamar función
-            code.AddRange(new byte[] { 0xB8 }); // mov eax, immediate32
-            code.AddRange(BitConverter.GetBytes(functionAddr.ToInt32()));
-            code.AddRange(new byte[] { 0xFF, 0xD0 }); // call eax
-
-            // Limpiar stack si es stdcall
-            if (parameters.Length > 0)
+            finally
             {
-                code.AddRange(new byte[] { 0x83, 0xC4, (byte)(parameters.Length * 4) }); // add esp, paramCount*4
+                ByteArrayPool.Return(buffer);
             }
-
-            // Epílogo
-            code.AddRange(new byte[] { 0x89, 0xEC }); // mov esp, ebp
-            code.AddRange(new byte[] { 0x5D }); // pop ebp
-            code.Add(0xC3); // ret
-
-            return code.ToArray();
         }
 
-        private static void LoadParameterX64(List<byte> code, Parameter param, int index)
+        private static int LoadParameterX64Optimized(Span<byte> buffer, Parameter param, int index)
         {
-            byte[] registerCodes = { 0xB9, 0xBA, 0x41, 0x41 }; // mov para RCX, RDX, R8, R9
-            byte[] registerExtensions = { 0x00, 0x00, 0xB8, 0xB9 }; // extensiones para R8, R9
+            ReadOnlySpan<byte> registerCodes = stackalloc byte[] { 0xB9, 0xBA, 0x41, 0x41 };
+            ReadOnlySpan<byte> registerExtensions = stackalloc byte[] { 0x00, 0x00, 0xB8, 0xB9 };
 
             if (index < 4)
             {
-                var value = GetParameterBytes(param);
-                if (index >= 2) code.Add(registerExtensions[index]); // prefijo REX para R8/R9
-                code.Add(registerCodes[index]);
-                code.AddRange(value.Take(4)); // primeros 4 bytes
+                int position = 0;
+                var value = GetParameterBytesSpan(param);
+
+                if (index >= 2) buffer[position++] = registerExtensions[index];
+                buffer[position++] = registerCodes[index];
+
+                value.Slice(0, Math.Min(4, value.Length)).CopyTo(buffer.Slice(position));
+                position += 4;
+
+                return position;
             }
             else
             {
-                // Implementar push a stack para parámetros adicionales
+                // Stack parameters - implementar según sea necesario
+                return 0;
             }
         }
 
-        private static void LoadParameterX86(List<byte> code, Parameter param)
+        private static int LoadParameterX86Optimized(Span<byte> buffer, Parameter param)
         {
-            var value = GetParameterBytes(param);
-            code.Add(0x68); // push immediate32
-            code.AddRange(value.Take(4));
+            var value = GetParameterBytesSpan(param);
+            buffer[0] = 0x68; // push immediate32
+            value.Slice(0, Math.Min(4, value.Length)).CopyTo(buffer.Slice(1));
+            return 5;
         }
 
-        private static byte[] GetParameterBytes(Parameter param)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ReadOnlySpan<byte> GetParameterBytesSpan(Parameter param)
         {
             return param.Type switch
             {
@@ -470,5 +562,14 @@ namespace AvalonInjectLib
                 _ => BitConverter.GetBytes(0)
             };
         }
+
+        // Método para limpiar cache si es necesario
+        public static void ClearCache()
+        {
+            ShellcodeCache.Clear();
+        }
+
+        // Método para obtener estadísticas de cache (útil para debugging)
+        public static int GetCacheCount() => ShellcodeCache.Count;
     }
 }

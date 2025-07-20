@@ -1,11 +1,7 @@
-﻿using System;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Net;
+﻿using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
 
 namespace AvalonInjectLib
 {
@@ -87,7 +83,6 @@ namespace AvalonInjectLib
         #region Thread-Safe Operation Tracking
 
         private static volatile int _activeOperations = 0;
-        private static readonly object _lockObject = new object();
 
         /// <summary>
         /// Tracks active operations to prevent race conditions
@@ -238,7 +233,7 @@ namespace AvalonInjectLib
         /// <param name="address">Memory address</param>
         /// <returns>Read value</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static T ReadDirect<[DynamicallyAccessedMembers( DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>(IntPtr hProcess, IntPtr address) where T : unmanaged
+        public static T ReadDirect<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>(IntPtr hProcess, IntPtr address) where T : unmanaged
         {
             BeginOperation();
             try
@@ -461,7 +456,7 @@ namespace AvalonInjectLib
         /// <param name="offsets">Optional offsets to apply</param>
         /// <returns>Read value</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static T Read<[DynamicallyAccessedMembers( DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>(CalculatedAddress calcAddr, params int[] offsets) where T : unmanaged
+        public static T Read<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>(CalculatedAddress calcAddr, params int[] offsets) where T : unmanaged
         {
             IntPtr resolvedAddress = ResolveAddress(calcAddr, offsets);
             return ReadDirect<T>(calcAddr.Process.Handle, resolvedAddress);
@@ -476,7 +471,7 @@ namespace AvalonInjectLib
         /// <param name="offsets">Offsets to apply</param>
         /// <returns>Read value</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static T Read<[DynamicallyAccessedMembers( DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>(IntPtr hProcess, IntPtr baseAddress, params int[] offsets) where T : unmanaged
+        public static T Read<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>(IntPtr hProcess, IntPtr baseAddress, params int[] offsets) where T : unmanaged
         {
             IntPtr resolvedAddress = AddOffsets(baseAddress, offsets);
             return ReadDirect<T>(hProcess, resolvedAddress);
@@ -523,7 +518,7 @@ namespace AvalonInjectLib
         /// <param name="value">Value to write</param>
         /// <param name="offsets">Optional offsets to apply</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Write<[DynamicallyAccessedMembers( DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>(CalculatedAddress calcAddr, T value, params int[] offsets) where T : unmanaged
+        public static void Write<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>(CalculatedAddress calcAddr, T value, params int[] offsets) where T : unmanaged
         {
             IntPtr resolvedAddress = ResolveAddress(calcAddr, offsets);
             WriteDirect(calcAddr.Process.Handle, resolvedAddress, value);
@@ -538,7 +533,7 @@ namespace AvalonInjectLib
         /// <param name="value">Value to write</param>
         /// <param name="offsets">Offsets to apply</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Write<[DynamicallyAccessedMembers( DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>(IntPtr hProcess, IntPtr baseAddress, T value, params int[] offsets) where T : unmanaged
+        public static void Write<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.NonPublicConstructors)] T>(IntPtr hProcess, IntPtr baseAddress, T value, params int[] offsets) where T : unmanaged
         {
             IntPtr resolvedAddress = AddOffsets(baseAddress, offsets);
             WriteDirect(hProcess, resolvedAddress, value);
@@ -717,38 +712,7 @@ namespace AvalonInjectLib
         /// </summary>
         public static void ForceCleanup()
         {
-            lock (_lockObject)
-            {
-                TriggerCleanup();
-            }
-        }
-
-        /// <summary>
-        /// Gets the current number of active memory operations
-        /// </summary>
-        /// <returns>Number of active operations</returns>
-        public static int GetActiveOperationCount()
-        {
-            return _activeOperations;
-        }
-
-        /// <summary>
-        /// Waits for all active operations to complete
-        /// </summary>
-        /// <param name="timeoutMs">Timeout in milliseconds</param>
-        /// <returns>True if all operations completed within timeout</returns>
-        public static bool WaitForOperationsToComplete(int timeoutMs = 5000)
-        {
-            int elapsed = 0;
-            const int sleepInterval = 10;
-
-            while (_activeOperations > 0 && elapsed < timeoutMs)
-            {
-                Thread.Sleep(sleepInterval);
-                elapsed += sleepInterval;
-            }
-
-            return _activeOperations == 0;
+            TriggerCleanup();
         }
 
         #endregion

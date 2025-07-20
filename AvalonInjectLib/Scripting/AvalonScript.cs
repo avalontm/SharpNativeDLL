@@ -4,8 +4,10 @@ using MoonSharp.Interpreter;
 
 namespace AvalonInjectLib.Scripting
 {
-    public class AvalonScript : IAvalonScript
+    public class AvalonScript : IAvalonScript, IDisposable
     {
+        private bool _disposed;
+
         public string FilePath { get; private set; }
 
         ScriptControlType _type = ScriptControlType.CheckBox;
@@ -53,7 +55,7 @@ namespace AvalonInjectLib.Scripting
                         _script.Call(_initializeFunc);
                 }
             }
-            catch (Exception ex)
+            catch (ArgumentException ex)
             {
                 Logger.Error($"Error en Initialize(): {ex.Message}", "MoonSharp");
             }
@@ -69,7 +71,7 @@ namespace AvalonInjectLib.Scripting
                         _script.Call(_updateFunc);
                 }
             }
-            catch (Exception ex)
+            catch (ArgumentException ex)
             {
                 Logger.Error($"Error en Update(): {ex.Message}", "MoonSharp");
             }
@@ -85,7 +87,7 @@ namespace AvalonInjectLib.Scripting
                         _script.Call(_drawFunc);
                 }
             }
-            catch (Exception ex)
+            catch (ArgumentException ex)
             {
                 Logger.Error($"Error en Draw(): {ex.Message}", "MoonSharp");
             }
@@ -105,33 +107,42 @@ namespace AvalonInjectLib.Scripting
                     }
                 }
             }
-            catch (Exception ex)
+            catch (ArgumentException ex)
             {
                 Logger.Error($"Error en ChangeValue(): {ex.Message}", "MoonSharp");
             }
         }
 
-        private DynValue ConvertToLuaValue(object value)
+        // Lógica de Dispose
+        public void Dispose()
         {
-            if (value == null)
-                return DynValue.NewNil();
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
 
-            switch (value)
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_disposed)
+                return;
+
+            if (disposing)
             {
-                case bool b:
-                    return DynValue.NewBoolean(b);
-                case int i:
-                    return DynValue.NewNumber(i);
-                case float f:
-                    return DynValue.NewNumber(f);
-                case double d:
-                    return DynValue.NewNumber(d);
-                case string s:
-                    return DynValue.NewString(s);
-                default:
-                    // Para otros tipos, intenta una conversión automática
-                    return DynValue.FromObject(_script, value);
+                // Libera recursos administrados aquí si los tuvieras
+                _script = null;
+                _initializeFunc = null;
+                _updateFunc = null;
+                _drawFunc = null;
+                _valueFunc = null;
             }
+
+            // Libera recursos no administrados aquí si los tuvieras
+
+            _disposed = true;
+        }
+
+        ~AvalonScript()
+        {
+            Dispose(false);
         }
     }
 }

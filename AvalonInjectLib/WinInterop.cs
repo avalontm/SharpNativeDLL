@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Text;
+using static AvalonInjectLib.ProcessManager;
 using static AvalonInjectLib.Structs;
 
 namespace AvalonInjectLib
@@ -205,6 +206,12 @@ namespace AvalonInjectLib
             uint flAllocationType,
             uint flProtect);
 
+        [DllImport("kernel32.dll", SetLastError = true)]
+        internal static extern IntPtr LoadLibrary(string lpFileName);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        internal static extern uint GetModuleFileName(IntPtr hModule, StringBuilder lpFilename, int nSize);
+
         /// <summary>
         /// Writes data to an area of memory in a specified process
         /// </summary>
@@ -313,6 +320,8 @@ namespace AvalonInjectLib
         [DllImport("kernel32", SetLastError = true)]
         internal static extern uint GetLastError();
 
+
+
         /// <summary>
         /// Creates a thread that runs in the virtual address space of the calling process
         /// </summary>
@@ -320,7 +329,7 @@ namespace AvalonInjectLib
         internal static extern IntPtr CreateThread(
         IntPtr lpThreadAttributes,
         uint dwStackSize,
-        delegate* unmanaged<IntPtr, int> lpStartAddress,
+        IntPtr lpStartAddress,
         IntPtr lpParameter,
         uint dwCreationFlags,
         out uint lpThreadId);
@@ -341,7 +350,7 @@ namespace AvalonInjectLib
         /// <summary>
         /// Disables the DLL_THREAD_ATTACH and DLL_THREAD_DETACH notifications for the specified DLL
         /// </summary>
-        [DllImport("kernel32")]
+        [DllImport("kernel32.dll", SetLastError = true)]
         internal static extern bool DisableThreadLibraryCalls(IntPtr hModule);
 
         /// <summary>

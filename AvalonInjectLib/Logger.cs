@@ -1,11 +1,10 @@
 ﻿using System;
-using System.Diagnostics;
+using System.Collections.Generic;
 
 namespace AvalonInjectLib
 {
     public static class Logger
     {
-        // Niveles de log
         public enum LogLevel
         {
             Debug,
@@ -19,8 +18,8 @@ namespace AvalonInjectLib
         public static bool EnableDebug { get; set; } = true;
         public static bool EnableTimestamp { get; set; } = true;
         public static LogLevel MinimumLevel { get; set; } = LogLevel.Debug;
+        public static int MaxLinesBeforeClear { get; set; } = 200;
 
-        // Colores para cada nivel (solo aplica si la consola soporta colores)
         private static readonly Dictionary<LogLevel, ConsoleColor> _levelColors = new()
         {
             { LogLevel.Debug, ConsoleColor.Gray },
@@ -30,46 +29,65 @@ namespace AvalonInjectLib
             { LogLevel.Critical, ConsoleColor.DarkRed }
         };
 
-        // Bloqueo para thread-safe
         private static readonly object _lock = new();
+
+        private static int _lineCount = 0;
+        private static bool _consoleAvailable = true;
 
         public static void Log(LogLevel level, string message, string module = null)
         {
             if ((int)level < (int)MinimumLevel)
                 return;
 
-            // No mostrar Debug si está desactivado
             if (level == LogLevel.Debug && !EnableDebug)
                 return;
 
             lock (_lock)
             {
-                var originalColor = Console.ForegroundColor;
-
-                // Timestamp
-                if (EnableTimestamp)
+                try
                 {
-                    Console.ForegroundColor = ConsoleColor.DarkGray;
-                    Console.Write($"[{DateTime.Now:HH:mm:ss.fff}] ");
+                    if (_consoleAvailable)
+                    {
+                        var originalColor = Console.ForegroundColor;
+
+                        // Timestamp
+                        if (EnableTimestamp)
+                        {
+                            Console.ForegroundColor = ConsoleColor.DarkGray;
+                            Console.Write($"[{DateTime.Now:HH:mm:ss.fff}] ");
+                        }
+
+                        // Nivel
+                        Console.ForegroundColor = _levelColors[level];
+                        Console.Write($"[{level.ToString().ToUpper()}] ");
+
+                        // Módulo
+                        if (!string.IsNullOrEmpty(module))
+                        {
+                            Console.ForegroundColor = ConsoleColor.Cyan;
+                            Console.Write($"[{module}] ");
+                        }
+
+                        // Mensaje
+                        Console.ForegroundColor = originalColor;
+                        Console.WriteLine(message);
+
+                        Console.ResetColor();
+
+                        _lineCount++;
+
+                        if (_lineCount >= MaxLinesBeforeClear)
+                        {
+                            Console.Clear();
+                            Console.SetBufferSize(Console.WindowWidth, Console.WindowHeight);
+                            _lineCount = 0;
+                        }
+                    }
                 }
-
-                // Nivel
-                Console.ForegroundColor = _levelColors[level];
-                Console.Write($"[{level.ToString().ToUpper()}] ");
-
-                // Módulo (opcional)
-                if (!string.IsNullOrEmpty(module))
+                catch
                 {
-                    Console.ForegroundColor = ConsoleColor.Cyan;
-                    Console.Write($"[{module}] ");
+                    _consoleAvailable = false; // Desactiva futuros logs si no hay consola disponible
                 }
-
-                // Mensaje
-                Console.ForegroundColor = originalColor;
-                Console.WriteLine(message);
-
-                // Reset color
-                Console.ResetColor();
             }
         }
 
@@ -80,7 +98,6 @@ namespace AvalonInjectLib
         public static void Error(string message, string module = null) => Log(LogLevel.Error, message, module);
         public static void Critical(string message, string module = null) => Log(LogLevel.Critical, message, module);
 
-        // Método para excepciones
         public static void Exception(Exception ex, string message = null, string module = null)
         {
             var msg = $"{message} - {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}";
@@ -93,4 +110,3 @@ namespace AvalonInjectLib
         }
     }
 }
-
