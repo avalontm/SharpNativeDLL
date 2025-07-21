@@ -4,12 +4,12 @@
 		<TargetFramework>net9.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
-		<Charset>UTF-8</Charset>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
 		<!-- Configuración de Trimming y AOT -->
+		<PublishAot>true</PublishAot>
 		<IsAotCompatible>true</IsAotCompatible>
-		
+
 		<!-- Optimizaciones adicionales -->
 		<InvariantGlobalization>true</InvariantGlobalization>
 		<IlcOptimizationPreference>Size</IlcOptimizationPreference>
@@ -34,6 +34,10 @@
 
 	<ItemGroup>
 	  <ProjectReference Include="..\MoonSharp.Interprete\MoonSharp.Interprete.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="Properties\" />
 	</ItemGroup>
 
 </Project>

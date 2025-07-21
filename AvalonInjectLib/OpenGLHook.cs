@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using static AvalonInjectLib.Structs;
 
@@ -127,7 +128,7 @@ namespace AvalonInjectLib
         {
             try
             {
-                IntPtr hOpenGL = ProcessManager.Module(AvalonEngine.Instance.Process.ProcessId, "opengl32.dll");
+                IntPtr hOpenGL = ProcessManager.Module(Process.GetCurrentProcess().Id, "opengl32.dll");
                 if (hOpenGL == IntPtr.Zero)
                 {
                     Logger.Error("OpenGL32.dll not found in target process", "OpenGLHook");
@@ -135,7 +136,7 @@ namespace AvalonInjectLib
                 }
 
                 _originalWglSwapBuffers = WinInterop.GetProcAddressEx(
-                    AvalonEngine.Instance.Process.Handle,
+                   Process.GetCurrentProcess().Handle,
                     hOpenGL,
                     "wglSwapBuffers"
                 );
@@ -265,7 +266,7 @@ namespace AvalonInjectLib
                 fixed (byte* pHookCode = hookCode)
                 {
                     success = WinInterop.WriteProcessMemory(
-                        AvalonEngine.Instance.Process.Handle,
+                        Process.GetCurrentProcess().Handle,
                         _originalWglSwapBuffers,
                         pHookCode,
                         (uint)hookCode.Length,
@@ -280,7 +281,7 @@ namespace AvalonInjectLib
                 {
                     // Flush instruction cache
                     WinInterop.FlushInstructionCache(
-                        AvalonEngine.Instance.Process.Handle,
+                        Process.GetCurrentProcess().Handle,
                         _originalWglSwapBuffers,
                         (uint)hookCode.Length
                     );
@@ -725,7 +726,7 @@ namespace AvalonInjectLib
                         fixed (byte* pOriginalBytes = _originalBytes)
                         {
                             bool restored = WinInterop.WriteProcessMemory(
-                                AvalonEngine.Instance.Process.Handle,
+                                Process.GetCurrentProcess().Handle,
                                 _originalWglSwapBuffers,
                                 pOriginalBytes,
                                 (uint)_originalBytes.Length,
@@ -735,7 +736,7 @@ namespace AvalonInjectLib
                             if (restored)
                             {
                                 WinInterop.FlushInstructionCache(
-                                    AvalonEngine.Instance.Process.Handle,
+                                    Process.GetCurrentProcess().Handle,
                                     _originalWglSwapBuffers,
                                     (uint)_originalBytes.Length
                                 );

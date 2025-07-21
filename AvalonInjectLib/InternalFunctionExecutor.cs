@@ -3,13 +3,13 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 
 namespace AvalonInjectLib
 {
-    public static class RemoteFunctionExecutor
+    public static class InternalFunctionExecutor
     {
         private static readonly bool Is64Bit = IntPtr.Size == 8;
-        public static int TimeoutMs { get; set; } = 5000;
 
         // Cache para shellcode reutilizable
         private static readonly ConcurrentDictionary<string, byte[]> ShellcodeCache = new();
@@ -45,7 +45,7 @@ namespace AvalonInjectLib
                 [typeof(string)] = ParamType.String
             });
 
-        static RemoteFunctionExecutor()
+        static InternalFunctionExecutor()
         {
             // Pre-calcular prólogos comunes para evitar allocaciones
             InitializeCachedPrologues();
@@ -157,27 +157,23 @@ namespace AvalonInjectLib
         public static Parameter UInt(uint value) => new(ParamType.UInt32, value);
 
         /// <summary>
-        /// Ejecuta una función remota o local con parámetros tipados
+        /// Executes a function locally or in a remote process.
+        /// If <paramref name="hProcess"/> is <c>IntPtr.Zero</c>, the function runs locally.
         /// </summary>
-        public static bool CallFunction(IntPtr hProcess, IntPtr functionAddr, params Parameter[] parameters)
+        /// <param name="hProcess">Target process handle, or <c>IntPtr.Zero</c> for local execution.</param>
+        /// <param name="functionAddr">Pointer to the function to execute.</param>
+        /// <param name="parameters">Typed parameters for the function.</param>
+        /// <returns><c>true</c> if the function executed successfully; otherwise, <c>false</c>.</returns>
+        /// <exception cref="RemoteFunctionException">Thrown on invalid address or execution failure.</exception>
+
+        public static bool CallFunction(IntPtr functionAddr, params Parameter[] parameters)
         {
             try
             {
                 if (functionAddr == IntPtr.Zero)
                     throw new RemoteFunctionException("Validation", "Dirección de función inválida (IntPtr.Zero)");
 
-                // Determinar si es ejecución local o remota
-                IntPtr currentProcess = AvalonEngine.Instance.Process.Handle;
-                bool isLocalExecution = hProcess == IntPtr.Zero || hProcess == currentProcess;
-
-                if (isLocalExecution)
-                {
-                    return ExecuteFunctionDirect(functionAddr, parameters);
-                }
-                else
-                {
-                    return ExecuteFunctionRemote(hProcess, functionAddr, parameters);
-                }
+                return ExecuteFunctionDirect(functionAddr, parameters);
             }
             catch (RemoteFunctionException)
             {
@@ -190,15 +186,22 @@ namespace AvalonInjectLib
         }
 
         /// <summary>
-        /// Ejecuta una función con conversión automática de parámetros (optimizado para memoria)
+        /// Executes a function locally or in a remote process.
+        /// If <paramref name="hProcess"/> is <c>IntPtr.Zero</c>, the function runs locally.
         /// </summary>
-        public static bool CallFunction(IntPtr hProcess, IntPtr functionAddr, params object[] parameters)
+        /// <param name="hProcess">Target process handle, or <c>IntPtr.Zero</c> for local execution.</param>
+        /// <param name="functionAddr">Pointer to the function to execute.</param>
+        /// <param name="parameters">Typed parameters for the function.</param>
+        /// <returns><c>true</c> if the function executed successfully; otherwise, <c>false</c>.</returns>
+        /// <exception cref="RemoteFunctionException">Thrown on invalid address or execution failure.</exception>
+
+        public static bool CallFunction(IntPtr functionAddr, params object[] parameters)
         {
             if (functionAddr == IntPtr.Zero)
                 throw new RemoteFunctionException("Validation", "Dirección de función inválida (IntPtr.Zero)");
 
             if (parameters == null || parameters.Length == 0)
-                return CallFunction(hProcess, functionAddr, Array.Empty<Parameter>());
+                return CallFunction(functionAddr, Array.Empty<Parameter>());
 
             // Usar pool de arrays para evitar allocaciones
             var typedParams = ParameterArrayPool.Rent(parameters.Length);
@@ -220,7 +223,7 @@ namespace AvalonInjectLib
 
                 // Crear span para evitar crear nuevo array
                 var paramSpan = new ReadOnlySpan<Parameter>(typedParams, 0, parameters.Length);
-                return CallFunction(hProcess, functionAddr, paramSpan.ToArray()); // Necesario para la firma actual
+                return CallFunction(functionAddr, paramSpan.ToArray()); // Necesario para la firma actual
             }
             catch (RemoteFunctionException)
             {
@@ -263,65 +266,6 @@ namespace AvalonInjectLib
             }
 
             throw new ArgumentException($"Tipo no soportado: {type.Name}");
-        }
-
-        // Ejecución remota usando inyección de código con cache
-        private static bool ExecuteFunctionRemote(IntPtr hProcess, IntPtr functionAddr, Parameter[] parameters)
-        {
-            try
-            {
-                // Crear clave de cache basada en función y número de parámetros
-                string cacheKey = $"{functionAddr:X}_{parameters.Length}_{string.Join("_", parameters.Select(p => p.Type))}";
-
-                byte[] shellcode = ShellcodeCache.GetOrAdd(cacheKey, _ => CreateShellcode(functionAddr, parameters));
-
-                IntPtr remoteMemory = VirtualAllocEx(hProcess, IntPtr.Zero, (uint)shellcode.Length,
-                    MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-
-                if (remoteMemory == IntPtr.Zero)
-                {
-                    uint error = GetLastError();
-                    throw new RemoteFunctionException("MemoryAllocation", $"No se pudo alocar memoria remota. Error: {error}", (int)error);
-                }
-
-                try
-                {
-                    if (!WriteProcessMemory(hProcess, remoteMemory, shellcode, (uint)shellcode.Length, out uint bytesWritten))
-                    {
-                        uint error = GetLastError();
-                        throw new RemoteFunctionException("WriteMemory", $"Error escribiendo memoria remota. Error: {error}", (int)error);
-                    }
-
-                    IntPtr remoteThread = CreateRemoteThread(hProcess, IntPtr.Zero, 0, remoteMemory, IntPtr.Zero, 0, out uint threadId);
-                    if (remoteThread == IntPtr.Zero)
-                    {
-                        uint error = GetLastError();
-                        throw new RemoteFunctionException("ThreadCreation", $"Error creando thread remoto. Error: {error}", (int)error);
-                    }
-
-                    try
-                    {
-                        uint waitResult = WaitForSingleObject(remoteThread, (uint)TimeoutMs);
-                        return waitResult == WAIT_OBJECT_0;
-                    }
-                    finally
-                    {
-                        CloseHandle(remoteThread);
-                    }
-                }
-                finally
-                {
-                    VirtualFreeEx(hProcess, remoteMemory, 0, MEM_RELEASE);
-                }
-            }
-            catch (RemoteFunctionException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                throw new RemoteFunctionException("ExecuteFunctionRemote", "Error en ejecución remota", ex);
-            }
         }
 
         // Ejecución local directa sin delegates (sin cambios, ya estaba optimizada)

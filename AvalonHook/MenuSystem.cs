@@ -1,6 +1,7 @@
 ﻿using AvalonInjectLib;
 using AvalonInjectLib.Scripting;
 using AvalonInjectLib.UIFramework;
+using System.Diagnostics;
 
 namespace TargetGame
 {
@@ -22,7 +23,7 @@ namespace TargetGame
 
             // Inicializar dependencias
             Font.Initialize();
-            InputSystem.Initialize(AvalonEngine.Instance.Process.ProcessId);
+            InputSystem.Initialize((uint)Process.GetCurrentProcess().Id);
 
             // Crear menú principal
             CreateMainMenu();

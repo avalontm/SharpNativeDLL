@@ -1,4 +1,6 @@
-﻿namespace AvalonInjectLib
+﻿using System.Diagnostics;
+
+namespace AvalonInjectLib
 {
     /// <summary>
     /// Estructura que representa una dirección de memoria calculada
@@ -7,9 +9,9 @@
     public struct CalculatedAddress
     {
         public IntPtr Address { get; }
-        public ProcessEntry Process { get; }
+        public Process Process { get; }
 
-        internal CalculatedAddress(ProcessEntry process, IntPtr address)
+        internal CalculatedAddress(Process process, IntPtr address)
         {
             Process = process;
             Address = address;

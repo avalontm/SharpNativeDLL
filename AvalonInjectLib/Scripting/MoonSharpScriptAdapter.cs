@@ -17,11 +17,11 @@ namespace AvalonInjectLib.Scripting
             Script.Category = categoryFromPath ?? "General";
         }
 
-        public void Initialize(IAvalonEngine engine)
+        public void Initialize()
         {
             try
             {
-                var callbacks = new LuaAvalonCallbacks(engine);
+                var callbacks = new LuaAvalonCallbacks();
                 callbacks.RegisterAll(_script);
                 _script.DoFile(Script.FilePath);
 

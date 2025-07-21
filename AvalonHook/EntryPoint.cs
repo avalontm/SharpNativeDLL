@@ -1,68 +1,68 @@
 ﻿using AvalonInjectLib;
-using AvalonInjectLib.Scripting;
 using System.Runtime.InteropServices;
 
 namespace TargetGame
 {
     public unsafe class EntryPoint
     {
-        static AvalonEngine Engine { set; get; } = new AvalonEngine();
-        public static MoonSharpScriptLoader? _luaLoader { private set; get; }
-        static MenuSystem menuSystem = new MenuSystem();
+        //public static MoonSharpScriptLoader? _luaLoader { private set; get; }
+        //static MenuSystem menuSystem = new MenuSystem();
 
         // Control de estado mejorado
-        private static bool _isRunning = false;
-        private static bool _isInitialized = false;
-
-        // Constantes
-        const uint DLL_PROCESS_ATTACH = 1;
-        const uint DLL_THREAD_ATTACH = 2;
-        const uint DLL_THREAD_DETACH = 3;
-        const uint DLL_PROCESS_DETACH = 4;
+        private static bool _running = false;
 
         [UnmanagedCallersOnly(EntryPoint = "DllMain")]
-        public static bool DllMain(nint hModule, uint ul_reason_for_call, nint lpReserved)
+        public static bool DllMain(IntPtr hModule, uint reason, IntPtr lpReserved)
         {
-            switch (ul_reason_for_call)
+            switch ((DLL_PROCESS)reason)
             {
-                case DLL_PROCESS_ATTACH:
-
-                    return Application.Run(Main);
-
-                case DLL_PROCESS_DETACH:
-                case DLL_THREAD_ATTACH:
-                case DLL_THREAD_DETACH:
+                case DLL_PROCESS.ATTACH:
+                    Application.Run(StartLoop);
+                    break;
+                case DLL_PROCESS.DETACH:
+                    StopLoop();
                     break;
             }
+
             return true;
         }
 
-        private static void Main()
+        private static readonly List<(float X, float Y)> Waypoints = new()
         {
+            (-0.64f, 0.56f),  // Posición 1
+            (0.60f, 0.58f),   // Posición 2
+            (0.67f, -0.56f),  // Posición 3
+            (-0.65f, -0.49f)  // Posición 4
+        };
+
+        public static void StartLoop()
+        {
+            if (_running) return;
+
             try
             {
-                // Inicializar consola y logger
                 InitializeConsole();
-
                 Logger.Info("Thread principal iniciado");
 
-                if (!Initialize())
-                {
-                    Logger.Error("Error en la inicialización");
-                    return;
-                }
+                _running = true;
 
-                _isInitialized = true;
-                _isRunning = true;
+                int currentWaypointIndex = 0;
 
-                while (_isRunning)
+                while (_running)
                 {
-                    _luaLoader.UpdateAll();
-                    Thread.Sleep(10); // Reducir uso de CPU
+                    var (x, y) = Waypoints[currentWaypointIndex];
+
+                    Logger.Info($"Moviendo a waypoint {currentWaypointIndex}: ({x}, {y})");
+                    // Llamada a tu función con las coordenadas
+                    InternalFunctionExecutor.CallFunction(0xF01220, x, y);
+
+                    currentWaypointIndex = (currentWaypointIndex + 1) % Waypoints.Count;
+
+                    Thread.Sleep(1000); // Ajusta según frecuencia deseada
                 }
 
                 Logger.Info("Thread principal terminado");
-
+                Application.FreeConsole();
             }
             catch (Exception ex)
             {
@@ -70,10 +70,12 @@ namespace TargetGame
             }
         }
 
+
         private static bool Initialize()
         {
             InitializeScripts();
 
+            /*
             var process = ProcessManager.AttachToSelf();
             if (process == null)
             {
@@ -84,13 +86,13 @@ namespace TargetGame
             Engine.SetProcess(process);
             Logger.Info($"Proceso - PID: {process.ProcessId:X8}, Handle: {process.Handle:X8}, ModuleBase: {process.ModuleBase:X8}");
 
-
+            
             // 3. Inicializar renderer y menú de manera MÁS SEGURA
             if (!InitializeGraphicsSafely())
             {
                 Logger.Warning("Gráficos no disponibles, continuando en modo sin interfaz");
             }
-
+            */
 
             Logger.Info("Inicialización completada exitosamente");
             return true;
@@ -113,11 +115,11 @@ namespace TargetGame
                 return false;
             }
 
-            menuSystem.Initialize();
-            Renderer.SetRenderCallback(menuSystem.Render);
+            // menuSystem.Initialize();
+            // Renderer.SetRenderCallback(menuSystem.Render);
 
             // 4. Inicializar scripts después de gráficos
-            _luaLoader?.InitializeAll();
+            // _luaLoader?.InitializeAll();
 
             return true;
         }
@@ -153,8 +155,8 @@ namespace TargetGame
 
         private static void InitializeScripts()
         {
-            _luaLoader = new MoonSharpScriptLoader(Engine);
-            _luaLoader.LoadScripts("Scripts");
+            // _luaLoader = new MoonSharpScriptLoader(Engine);
+            // _luaLoader.LoadScripts("Scripts");
             Logger.Info("Scripts inicializados correctamente");
         }
 
@@ -175,8 +177,20 @@ namespace TargetGame
             Logger.Info("Consola inicializada");
         }
 
-        // Propiedades útiles para debugging
-        public static bool IsInitialized => _isInitialized;
-        public static bool IsRunning => _isRunning;
+        private static void StopLoop()
+        {
+            if (!_running) return;
+
+            Logger.Info("[Runtime] Deteniendo...");
+            _running = false;
+        }
+
+
+        [UnmanagedCallersOnly(EntryPoint = "StopApp")]
+        public static void StopApp()
+        {
+            StopLoop();
+        }
+
     }
 }

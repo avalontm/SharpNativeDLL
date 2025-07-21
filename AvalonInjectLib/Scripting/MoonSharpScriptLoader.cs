@@ -11,7 +11,6 @@ namespace AvalonInjectLib.Scripting
     /// </summary>
     public class MoonSharpScriptLoader
     {
-        private IAvalonEngine _engine;
         private readonly List<AvalonScript> _scripts = new();
         private readonly object _lockObject = new object();
         private volatile bool _isReloading = false;
@@ -42,11 +41,10 @@ namespace AvalonInjectLib.Scripting
         /// Initializes a new instance of the script loader
         /// </summary>
         /// <param name="engine">The Avalon engine instance</param>
-        public MoonSharpScriptLoader(IAvalonEngine engine)
+        public MoonSharpScriptLoader()
         {
             if (Instance != null) return;
             Instance = this;
-            _engine = engine;
         }
 
         /// <summary>
@@ -82,7 +80,7 @@ namespace AvalonInjectLib.Scripting
                         string category = GetCategoryFromPath(file, scriptsDirectory);
 
                         var adapter = new MoonSharpScriptAdapter(file, category);
-                        adapter.Initialize(_engine);
+                        adapter.Initialize();
                         _scripts.Add(adapter.Script);
 
                         // Organize by category

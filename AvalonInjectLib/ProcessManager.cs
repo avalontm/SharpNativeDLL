@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -93,63 +94,6 @@ namespace AvalonInjectLib
             return WinInterop.OpenProcess(ACCESS_MASK, false, processId);
         }
 
-        public static ProcessEntry Create(string processName, string moduleName = null)
-        {
-            ProcessEntry moduleProcess = null;
-            var processId = Find(processName);
-            var hProcess = Open(processId);
-            var moduleBase = Module(processId, moduleName);
-
-            if (processId > 0 && hProcess != IntPtr.Zero && moduleBase != IntPtr.Zero)
-            {
-                moduleProcess = new ProcessEntry(processId, hProcess, moduleBase);
-            }
-            else
-            {
-                if (hProcess != IntPtr.Zero)
-                    WinInterop.CloseHandle(hProcess);
-            }
-            return moduleProcess;
-        }
-
-        /// <summary>
-        /// Obtiene el proceso actual (donde está inyectada la DLL)
-        /// </summary>
-        /// <param name="moduleName">Nombre del módulo a buscar (opcional)</param>
-        /// <returns>ProcessEntry del proceso actual</returns>
-        public static ProcessEntry GetCurrentProcess(string moduleName = null)
-        {
-            uint currentProcessId = WinInterop.GetCurrentProcessId();
-            IntPtr currentHandle = WinInterop.GetCurrentProcess();
-            IntPtr moduleBase = IntPtr.Zero;
-
-            if (string.IsNullOrEmpty(moduleName))
-            {
-                // Obtener base del módulo principal
-                moduleBase = WinInterop.GetModuleHandle(null);
-            }
-            else
-            {
-                moduleBase = Module(currentProcessId, moduleName);
-            }
-
-            if (moduleBase != IntPtr.Zero)
-            {
-                return new ProcessEntry(currentProcessId, currentHandle, moduleBase);
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// Función automática para manipular el proceso actual desde la DLL inyectada
-        /// </summary>
-        /// <param name="targetModuleName">Módulo objetivo a manipular (null = proceso principal)</param>
-        /// <returns>ProcessEntry listo para usar</returns>
-        public static ProcessEntry AttachToSelf(string targetModuleName = null)
-        {
-            return GetCurrentProcess(targetModuleName);
-        }
 
         /// <summary>
         /// Hook automático en el proceso actual
@@ -292,9 +236,9 @@ namespace AvalonInjectLib
             return WinInterop.FindProcessId(processName);
         }
 
-        public static IntPtr Module(uint processId, string moduleName)
+        public static IntPtr Module(int processId, string moduleName)
         {
-            return WinInterop.GetModuleBaseEx(processId, moduleName);
+            return WinInterop.GetModuleBaseEx((uint)processId, moduleName);
         }
 
         public static bool IsOpen(IntPtr hProcess)

@@ -14,7 +14,6 @@ namespace AvalonInjectLib.Scripting
     {
         #region Private Fields
 
-        private readonly IAvalonEngine _engine;
         private readonly Random _random;
         private static readonly object _randomLock = new object();
 
@@ -27,9 +26,8 @@ namespace AvalonInjectLib.Scripting
         /// </summary>
         /// <param name="engine">The Avalon engine instance to use for operations.</param>
         /// <exception cref="ArgumentNullException">Thrown when engine is null.</exception>
-        public LuaAvalonCallbacks(IAvalonEngine engine)
+        public LuaAvalonCallbacks()
         {
-            _engine = engine ?? throw new ArgumentNullException(nameof(engine));
             _random = new Random();
         }
 
@@ -88,14 +86,14 @@ namespace AvalonInjectLib.Scripting
                 {
                     var baseAddress = ConvertToInt32(args[0]);
                     var value = ConvertToInt32(args[1]);
-                    MemoryManager.Write<int>(_engine.Process.Handle, baseAddress, value, null);
+                    MemoryManager.Write<int>(Process.GetCurrentProcess().Handle, baseAddress, value, null);
                 }
                 else if (args.Length == 3) // baseAddress, value, offsets
                 {
                     var baseAddress = ConvertToInt32(args[0]);
                     var value = ConvertToInt32(args[1]);
                     var offsets = ExtractOffsetsFromTable(args[2]);
-                    MemoryManager.Write<int>(_engine.Process.Handle, baseAddress, value, offsets);
+                    MemoryManager.Write<int>(Process.GetCurrentProcess().Handle, baseAddress, value, offsets);
                 }
                 return DynValue.Void;
             });
@@ -112,27 +110,27 @@ namespace AvalonInjectLib.Scripting
             memoryTable["ReadInt"] = (Func<long, DynValue, int>)((address, offsetsDyn) =>
             {
                 var offsets = ExtractOffsetsFromDynValue(offsetsDyn);
-                return MemoryManager.Read<int>(_engine.Process.Handle, new IntPtr(address), offsets);
+                return MemoryManager.Read<int>(Process.GetCurrentProcess().Handle, new IntPtr(address), offsets);
             });
 
             // Read byte value
             memoryTable["ReadByte"] = (Func<long, DynValue, byte>)((address, offsetsDyn) =>
             {
                 var offsets = ExtractOffsetsFromDynValue(offsetsDyn);
-                return MemoryManager.Read<byte>(_engine.Process.Handle, new IntPtr(address), offsets);
+                return MemoryManager.Read<byte>(Process.GetCurrentProcess().Handle, new IntPtr(address), offsets);
             });
 
             // Read float value
             memoryTable["ReadFloat"] = (Func<long, DynValue, float>)((address, offsetsDyn) =>
             {
                 var offsets = ExtractOffsetsFromDynValue(offsetsDyn);
-                return MemoryManager.Read<float>(_engine.Process.Handle, new IntPtr(address), offsets);
+                return MemoryManager.Read<float>(Process.GetCurrentProcess().Handle, new IntPtr(address), offsets);
             });
 
             // Read string value
             memoryTable["ReadString"] = (Func<long, DynValue, string>)((address, offsetsDyn) =>
             {
-                return MemoryManager.ReadString(_engine.Process.Handle, new IntPtr(address));
+                return MemoryManager.ReadString(Process.GetCurrentProcess().Handle, new IntPtr(address));
             });
         }
 
@@ -184,8 +182,7 @@ namespace AvalonInjectLib.Scripting
                 }
 
                 // Execute remote function call
-                return RemoteFunctionExecutor.CallFunction(
-                    _engine.Process.Handle,
+                return InternalFunctionExecutor.CallFunction(
                     new IntPtr(functionAddress),
                     parameters.ToArray());
             });
@@ -229,7 +226,7 @@ namespace AvalonInjectLib.Scripting
             script.Globals["print"] = (Action<string>)(msg =>
             {
                 if (!string.IsNullOrEmpty(msg))
-                    _engine.Log(msg, "Script");
+                    Logger.Info(msg, "Script");
             });
 
             // Sleep function with validation
@@ -344,33 +341,6 @@ namespace AvalonInjectLib.Scripting
                 throw new ArgumentException("Expected table for offsets");
 
             return tableValue.Table.Values.Select(v => (int)v.Number).ToArray();
-        }
-
-        /// <summary>
-        /// Converts Lua parameters to C# objects with proper type handling.
-        /// </summary>
-        /// <param name="args">The Lua arguments to convert.</param>
-        /// <returns>An array of converted C# objects.</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static object[] ConvertLuaParametersToCSharp(DynValue[] args)
-        {
-            var parameters = new object[args.Length];
-
-            for (int i = 0; i < args.Length; i++)
-            {
-                var arg = args[i];
-                parameters[i] = arg.Type switch
-                {
-                    DataType.Number when arg.Number == Math.Floor(arg.Number) => (int)arg.Number,
-                    DataType.Number => (float)arg.Number,
-                    DataType.String => arg.String ?? string.Empty,
-                    DataType.Boolean => arg.Boolean,
-                    DataType.Nil => null,
-                    _ => arg.ToObject()
-                };
-            }
-
-            return parameters;
         }
 
         #endregion

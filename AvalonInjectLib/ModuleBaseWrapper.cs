@@ -1,4 +1,6 @@
-﻿namespace AvalonInjectLib
+﻿using System.Diagnostics;
+
+namespace AvalonInjectLib
 {
     /// <summary>
     /// Wrapper seguro para ModuleBase que preserva la dirección original
@@ -6,11 +8,11 @@
     public struct ModuleBaseWrapper
     {
         private readonly IntPtr _originalBase;
-        public ProcessEntry Process { get; }
+        public Process Process { get; }
 
         public IntPtr OriginalBase => _originalBase;
 
-        internal ModuleBaseWrapper(ProcessEntry process, IntPtr baseAddress)
+        internal ModuleBaseWrapper(Process process, IntPtr baseAddress)
         {
             Process = process;
             _originalBase = baseAddress;
