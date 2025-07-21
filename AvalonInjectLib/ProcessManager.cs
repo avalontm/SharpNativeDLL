@@ -5,19 +5,19 @@ using System.Text;
 
 namespace AvalonInjectLib
 {
-    public unsafe static class ProcessManager
+    internal unsafe static class ProcessManager
     {
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        public delegate uint ThreadStartDelegate(IntPtr lpParam);
+        internal delegate uint ThreadStartDelegate(IntPtr lpParam);
 
         private const uint ACCESS_MASK = 0x001F0FFF; // PROCESS_ALL_ACCESS
 
-        public static IntPtr GetMainWindowHandle(uint processId)
+        internal static IntPtr GetMainWindowHandle(uint processId)
         {
             IntPtr windowHandle = IntPtr.Zero;
             WinInterop.EnumWindows(delegate (IntPtr hWnd, IntPtr lParam)
             {
-               WinInterop.GetWindowThreadProcessId(hWnd, out var windowProcessId);
+                WinInterop.GetWindowThreadProcessId(hWnd, out var windowProcessId);
                 if (windowProcessId == processId)
                 {
                     windowHandle = hWnd;
@@ -32,7 +32,7 @@ namespace AvalonInjectLib
         /// <summary>
         /// Cierra un handle de proceso de forma segura
         /// </summary>
-        public static bool CloseProcessHandle(IntPtr hProcess)
+        internal static bool CloseProcessHandle(IntPtr hProcess)
         {
             if (hProcess == IntPtr.Zero)
                 return false;
@@ -49,7 +49,7 @@ namespace AvalonInjectLib
         /// <summary>
         /// Obtiene el handle del módulo actual (DLL inyectada)
         /// </summary>
-        public static IntPtr GetCurrentModuleHandle()
+        internal static IntPtr GetCurrentModuleHandle()
         {
             try
             {
@@ -89,7 +89,7 @@ namespace AvalonInjectLib
             }
         }
 
-        public static IntPtr Open(uint processId)
+        internal static IntPtr Open(uint processId)
         {
             return WinInterop.OpenProcess(ACCESS_MASK, false, processId);
         }
@@ -102,7 +102,7 @@ namespace AvalonInjectLib
         /// <param name="hookFunction">Función de reemplazo</param>
         /// <param name="originalBytes">Bytes originales (salida)</param>
         /// <returns>True si el hook fue exitoso</returns>
-        public static bool InstallHook(IntPtr targetAddress, IntPtr hookFunction, out byte[] originalBytes)
+        internal static bool InstallHook(IntPtr targetAddress, IntPtr hookFunction, out byte[] originalBytes)
         {
             originalBytes = null;
 
@@ -150,7 +150,7 @@ namespace AvalonInjectLib
         /// <param name="targetAddress">Dirección hooked</param>
         /// <param name="originalBytes">Bytes originales</param>
         /// <returns>True si se restauró correctamente</returns>
-        public static bool UninstallHook(IntPtr targetAddress, byte[] originalBytes)
+        internal static bool UninstallHook(IntPtr targetAddress, byte[] originalBytes)
         {
             if (originalBytes == null || originalBytes.Length < 5)
                 return false;
@@ -179,7 +179,7 @@ namespace AvalonInjectLib
             }
         }
 
-        public static void PreventUnload(IntPtr hModule)
+        internal static void PreventUnload(IntPtr hModule)
         {
             StringBuilder path = new StringBuilder(260);
             if (WinInterop.GetModuleFileName(hModule, path, path.Capacity) > 0)
@@ -196,7 +196,7 @@ namespace AvalonInjectLib
         /// <summary>
         /// Reanudar un thread suspendido
         /// </summary>
-        public static bool ResumeThread(IntPtr threadHandle)
+        internal static bool ResumeThread(IntPtr threadHandle)
         {
             return WinInterop.ResumeThread(threadHandle) != 0xFFFFFFFF;
         }
@@ -204,7 +204,7 @@ namespace AvalonInjectLib
         /// <summary>
         /// Suspender un thread
         /// </summary>
-        public static bool SuspendThread(IntPtr threadHandle)
+        internal static bool SuspendThread(IntPtr threadHandle)
         {
             return WinInterop.SuspendThread(threadHandle) != 0xFFFFFFFF;
         }
@@ -212,7 +212,7 @@ namespace AvalonInjectLib
         /// <summary>
         /// Esperar a que termine un thread con timeout
         /// </summary>
-        public static bool WaitForThread(IntPtr threadHandle, uint timeoutMs = 5000)
+        internal static bool WaitForThread(IntPtr threadHandle, uint timeoutMs = 5000)
         {
             uint result = WinInterop.WaitForSingleObject(threadHandle, timeoutMs);
             return result == 0; // WAIT_OBJECT_0
@@ -221,27 +221,27 @@ namespace AvalonInjectLib
         /// <summary>
         /// Obtener el código de salida de un thread
         /// </summary>
-        public static bool GetThreadExitCode(IntPtr threadHandle, out uint exitCode)
+        internal static bool GetThreadExitCode(IntPtr threadHandle, out uint exitCode)
         {
             return WinInterop.GetExitCodeThread(threadHandle, out exitCode);
         }
 
-        public static bool CloseThread(IntPtr threadHandle)
+        internal static bool CloseThread(IntPtr threadHandle)
         {
             return WinInterop.CloseHandle(threadHandle);
         }
 
-        public static uint Find(string processName)
+        internal static uint Find(string processName)
         {
             return WinInterop.FindProcessId(processName);
         }
 
-        public static IntPtr Module(int processId, string moduleName)
+        internal static IntPtr Module(int processId, string moduleName)
         {
             return WinInterop.GetModuleBaseEx((uint)processId, moduleName);
         }
 
-        public static bool IsOpen(IntPtr hProcess)
+        internal static bool IsOpen(IntPtr hProcess)
         {
             return WinInterop.IsProcessRunning(hProcess);
         }
@@ -249,7 +249,7 @@ namespace AvalonInjectLib
         /// <summary>
         /// Verificar si estamos ejecutándose en el contexto correcto
         /// </summary>
-        public static bool IsInjectedContext()
+        internal static bool IsInjectedContext()
         {
             try
             {
@@ -262,35 +262,6 @@ namespace AvalonInjectLib
             catch
             {
                 return false;
-            }
-        }
-
-        /// <summary>
-        /// Obtener información detallada del proceso actual
-        /// </summary>
-        public static ProcessInfo GetCurrentProcessInfo()
-        {
-            try
-            {
-                uint pid = WinInterop.GetCurrentProcessId();
-                IntPtr handle = WinInterop.GetCurrentProcess();
-                IntPtr moduleBase = WinInterop.GetModuleHandle(null);
-
-                // Obtener nombre del proceso
-                string processName = System.Diagnostics.Process.GetCurrentProcess().ProcessName;
-
-                return new ProcessInfo
-                {
-                    ProcessId = pid,
-                    ProcessName = processName,
-                    Handle = handle,
-                    ModuleBase = moduleBase
-                };
-            }
-            catch (Exception ex)
-            {
-                Logger.Error($"Error obteniendo información del proceso: {ex}");
-                return null;
             }
         }
 
@@ -318,106 +289,5 @@ namespace AvalonInjectLib
             };
         }
 
-        /// <summary>
-        /// Crear un patch de memoria temporal
-        /// </summary>
-        public static MemoryPatch CreateMemoryPatch(IntPtr address, byte[] newBytes)
-        {
-            try
-            {
-                // Leer bytes originales
-                byte[] originalBytes = new byte[newBytes.Length];
-                if (!WinInterop.ReadProcessMemory(WinInterop.GetCurrentProcess(), address, originalBytes, newBytes.Length, out _))
-                    return null;
-
-                return new MemoryPatch(address, originalBytes, newBytes);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error($"Error creando memory patch: {ex}");
-                return null;
-            }
-        }
-    }
-
-    // Clases de soporte
-    public class ProcessInfo
-    {
-        public uint ProcessId { get; set; }
-        public string ProcessName { get; set; }
-        public IntPtr Handle { get; set; }
-        public IntPtr ModuleBase { get; set; }
-    }
-
-    public class MemoryPatch : IDisposable
-    {
-        public IntPtr Address { get; private set; }
-        public byte[] OriginalBytes { get; private set; }
-        public byte[] PatchBytes { get; private set; }
-        public bool IsApplied { get; private set; }
-
-        public MemoryPatch(IntPtr address, byte[] originalBytes, byte[] patchBytes)
-        {
-            Address = address;
-            OriginalBytes = originalBytes;
-            PatchBytes = patchBytes;
-            IsApplied = false;
-        }
-
-        public bool Apply()
-        {
-            if (IsApplied) return true;
-
-            try
-            {
-                if (!WinInterop.VirtualProtect(Address, (uint)PatchBytes.Length, WinInterop.PAGE_EXECUTE_READWRITE, out uint oldProtect))
-                    return false;
-
-                bool success = WinInterop.WriteProcessMemory(WinInterop.GetCurrentProcess(), Address, PatchBytes, PatchBytes.Length, out _);
-
-                WinInterop.VirtualProtect(Address, (uint)PatchBytes.Length, oldProtect, out _);
-                WinInterop.FlushInstructionCache(WinInterop.GetCurrentProcess(), Address, (uint)PatchBytes.Length);
-
-                IsApplied = success;
-                return success;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public bool Remove()
-        {
-            if (!IsApplied) return true;
-
-            try
-            {
-                if (!WinInterop.VirtualProtect(Address, (uint)OriginalBytes.Length, WinInterop.PAGE_EXECUTE_READWRITE, out uint oldProtect))
-                    return false;
-
-                bool success = WinInterop.WriteProcessMemory(WinInterop.GetCurrentProcess(), Address, OriginalBytes, OriginalBytes.Length, out _);
-
-                WinInterop.VirtualProtect(Address, (uint)OriginalBytes.Length, oldProtect, out _);
-                WinInterop.FlushInstructionCache(WinInterop.GetCurrentProcess(), Address, (uint)OriginalBytes.Length);
-
-                IsApplied = !success;
-                return success;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        public void Dispose()
-        {
-            if (IsApplied)
-            {
-                Remove();
-            }
-        }
-
-     
     }
 }

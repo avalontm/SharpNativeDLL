@@ -23,7 +23,6 @@ namespace TargetGame
 
             // Inicializar dependencias
             Font.Initialize();
-            InputSystem.Initialize((uint)Process.GetCurrentProcess().Id);
 
             // Crear menú principal
             CreateMainMenu();
@@ -75,7 +74,7 @@ namespace TargetGame
         }
 
         #region RELOAD SYSTEM
-        public void OnReloadScripts()
+        public void ReloadScripts()
         {
             if (_isReloading) return;
             _isReloading = true;
@@ -100,15 +99,6 @@ namespace TargetGame
 
             if (!_isReloading)
             {
-                if (InputSystem.GetKeyDown(Keys.Insert))
-                {
-                    Toggle();
-                }
-                else if (InputSystem.GetKeyDown(Keys.Home))
-                {
-                    OnReloadScripts();
-                }
-
                 // Ejecutar el código específico a ~60 FPS
                 elapsed = now - _lastFrameTime;
                 if (elapsed.TotalMilliseconds >= targetFrameTime)
@@ -136,7 +126,6 @@ namespace TargetGame
                 DrawReloadIndicator();
             }
 
-            InputSystem.Update();
         }
 
         // Añade este campo a tu clase

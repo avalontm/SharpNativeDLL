@@ -1,55 +1,28 @@
-﻿using System.Runtime.InteropServices;
-using System.Collections.Generic;
-using static AvalonInjectLib.Structs;
+﻿using static AvalonInjectLib.Structs;
 
 namespace AvalonInjectLib
 {
     internal static class KeyboardMouseMonitor
     {
-        // Solo constantes necesarias para polling
-        private const int VK_LBUTTON = 0x01;
-        private const int VK_RBUTTON = 0x02;
-        private const int VK_MBUTTON = 0x04;
+        private const int POLL_INTERVAL = 16;
+        private const int DEBOUNCE_MS = 10;
+        private const int MOUSE_MOVE_TOLERANCE = 2;
 
-        private static volatile bool _isMonitoring = false;
-        private static uint _targetProcessId;
-        private static Action<InputEventArgs> _inputEventCallback;
+        private static readonly Dictionary<int, KeyState> _keyStates = new();
+        private static System.Timers.Timer? _timer;
+        private static Action<InputEventArgs>? _callback;
+        private static volatile bool _isRunning = false;
 
-        // Estados simples sin concurrency
+        private static uint _targetPid;
+        private static IntPtr _lastWindow = IntPtr.Zero;
+        private static uint _lastPid = 0;
+        private static long _lastWindowCheck = 0;
+        private static POINT _lastMouse;
+
         private struct KeyState
         {
-            internal bool CurrentState;
-            internal long LastChangeTime;
-        }
-
-        private static readonly Dictionary<int, KeyState> _keyStates = new Dictionary<int, KeyState>();
-        private static POINT _lastMousePosition;
-
-        // Configuración optimizada para AOT
-        private const int POLLING_INTERVAL_MS = 16; // ~60 FPS
-        private const int DEBOUNCE_TIME_MS = 10;
-        private const int MOUSE_MOVE_THRESHOLD = 2;
-
-        // Cache para ventana activa
-        private static IntPtr _lastForegroundWindow = IntPtr.Zero;
-        private static uint _lastForegroundProcessId = 0;
-        private static long _lastWindowCheckTime = 0;
-        private const int WINDOW_CHECK_INTERVAL_MS = 500; // Verificar menos frecuentemente
-
-        // Timer simple compatible con AOT
-        private static System.Timers.Timer _pollingTimer;
-
-        public class InputEventArgs
-        {
-            public InputType Type { get; set; }
-            public int KeyCode { get; set; }
-            public bool IsPressed { get; set; }
-            public string KeyName { get; set; }
-            public int MouseX { get; set; }
-            public int MouseY { get; set; }
-            public string ButtonName { get; set; }
-            public int WheelDelta { get; set; }
-            public bool IsHorizontalWheel { get; set; }
+            public bool IsPressed;
+            public long LastChange;
         }
 
         public enum InputType
@@ -57,97 +30,84 @@ namespace AvalonInjectLib
             Keyboard,
             MouseButton,
             MouseMove,
-            MouseWheel
         }
 
-        internal static void StartMonitoring(uint targetProcessId, Action<InputEventArgs> onInputEvent, Action<string> onLog = null)
+        public class InputEventArgs
         {
-            if (_isMonitoring) return;
+            public InputType Type { get; set; }
+            public int KeyCode { get; set; }
+            public bool IsPressed { get; set; }
+            public string KeyName { get; set; } = string.Empty;
+            public string ButtonName { get; set; } = string.Empty;
+            public int MouseX { get; set; }
+            public int MouseY { get; set; }
+        }
 
-            _targetProcessId = targetProcessId;
-            _inputEventCallback = onInputEvent;
-            _isMonitoring = true;
+        internal static void StartMonitoring(uint targetPid, Action<InputEventArgs> onInput)
+        {
+            if (_isRunning) return;
 
-            Logger.Debug("Starting simple polling monitoring...", "Monitor");
+            _isRunning = true;
+            _targetPid = targetPid;
+            _callback = onInput;
 
-            // Inicializar estado
-            ResetState();
+            _lastWindow = IntPtr.Zero;
+            _lastPid = 0;
+            _lastWindowCheck = 0;
+            _keyStates.Clear();
 
-            // Timer simple sin threads adicionales
-            _pollingTimer = new System.Timers.Timer(POLLING_INTERVAL_MS);
-            _pollingTimer.Elapsed += OnTimerTick;
-            _pollingTimer.AutoReset = true;
-            _pollingTimer.Start();
+            WinInterop.GetCursorPos(out _lastMouse);
 
-            Logger.Debug("Simple monitoring started successfully", "Monitor");
+            _timer = new System.Timers.Timer(POLL_INTERVAL)
+            {
+                AutoReset = true
+            };
+            _timer.Elapsed += (_, _) => Poll();
+            _timer.Start();
         }
 
         internal static void StopMonitoring()
         {
-            if (!_isMonitoring) return;
-
-            Logger.Debug("Stopping monitoring...", "Monitor");
-            _isMonitoring = false;
-
-            // Detener timer
-            _pollingTimer?.Stop();
-            _pollingTimer?.Dispose();
-            _pollingTimer = null;
-
-            Logger.Debug("Monitoring stopped", "Monitor");
+            _isRunning = false;
+            _timer?.Stop();
+            _timer?.Dispose();
+            _timer = null;
         }
 
-        private static void ResetState()
+        private static void Poll()
         {
-            _lastForegroundWindow = IntPtr.Zero;
-            _lastForegroundProcessId = 0;
-            _lastWindowCheckTime = 0;
-
-            WinInterop.GetCursorPos(out _lastMousePosition);
-            _keyStates.Clear();
-        }
-
-        private static void OnTimerTick(object sender, System.Timers.ElapsedEventArgs e)
-        {
-            if (!_isMonitoring) return;
+            if (!_isRunning || !IsTargetActive()) return;
 
             try
             {
-                // Solo procesar si la ventana objetivo está activa
-                if (IsTargetWindowActive())
-                {
-                    CheckMouseInput();
-                    CheckKeyboardInput();
-                }
+                HandleMouse();
+                HandleKeys();
             }
             catch (Exception ex)
             {
-                Logger.Error($"Polling error: {ex.Message}", "Monitor");
+                Logger.Error($"[Monitor] Poll error: {ex.Message}");
             }
         }
 
-        private static bool IsTargetWindowActive()
+        private static bool IsTargetActive()
         {
-            long currentTime = Environment.TickCount64;
+            long now = Environment.TickCount64;
 
-            // Cache para reducir llamadas API
-            if (currentTime - _lastWindowCheckTime < WINDOW_CHECK_INTERVAL_MS)
-            {
-                return _lastForegroundProcessId == _targetProcessId;
-            }
+            if (now - _lastWindowCheck < 500)
+                return _lastPid == _targetPid;
+
+            _lastWindowCheck = now;
 
             try
             {
                 IntPtr hWnd = WinInterop.GetForegroundWindow();
-                if (hWnd != _lastForegroundWindow)
+                if (hWnd != _lastWindow)
                 {
-                    _lastForegroundWindow = hWnd;
-                    WinInterop.GetWindowThreadProcessId(hWnd, out uint processId);
-                    _lastForegroundProcessId = processId;
+                    _lastWindow = hWnd;
+                    WinInterop.GetWindowThreadProcessId(hWnd, out _lastPid);
                 }
 
-                _lastWindowCheckTime = currentTime;
-                return _lastForegroundProcessId == _targetProcessId;
+                return _lastPid == _targetPid;
             }
             catch
             {
@@ -155,159 +115,84 @@ namespace AvalonInjectLib
             }
         }
 
-        private static void CheckMouseInput()
+        private static void HandleMouse()
         {
-            long currentTime = Environment.TickCount64;
+            WinInterop.GetCursorPos(out POINT current);
+            int dx = Math.Abs(current.X - _lastMouse.X);
+            int dy = Math.Abs(current.Y - _lastMouse.Y);
 
-            try
+            if (dx > MOUSE_MOVE_TOLERANCE || dy > MOUSE_MOVE_TOLERANCE)
             {
-                // Verificar posición del mouse
-                if (WinInterop.GetCursorPos(out POINT currentPos))
+                _callback?.Invoke(new InputEventArgs
                 {
-                    int deltaX = Math.Abs(currentPos.X - _lastMousePosition.X);
-                    int deltaY = Math.Abs(currentPos.Y - _lastMousePosition.Y);
+                    Type = InputType.MouseMove,
+                    MouseX = current.X,
+                    MouseY = current.Y
+                });
 
-                    if (deltaX > MOUSE_MOVE_THRESHOLD || deltaY > MOUSE_MOVE_THRESHOLD)
-                    {
-                        _inputEventCallback?.Invoke(new InputEventArgs
-                        {
-                            Type = InputType.MouseMove,
-                            MouseX = currentPos.X,
-                            MouseY = currentPos.Y
-                        });
-
-                        _lastMousePosition = currentPos;
-                    }
-                }
-
-                // Verificar botones del mouse
-                CheckMouseButton(VK_LBUTTON, "LeftButton", currentTime);
-                CheckMouseButton(VK_RBUTTON, "RightButton", currentTime);
-                CheckMouseButton(VK_MBUTTON, "MiddleButton", currentTime);
+                _lastMouse = current;
             }
-            catch
+
+            CheckMouseButton(0x01, "Left");
+            CheckMouseButton(0x02, "Right");
+            CheckMouseButton(0x04, "Middle");
+        }
+
+        private static void CheckMouseButton(int vk, string name)
+        {
+            short state = WinInterop.GetAsyncKeyState(vk);
+            bool pressed = (state & 0x8000) != 0;
+            HandleStateChange(vk, pressed, InputType.MouseButton, name);
+        }
+
+        private static void HandleKeys()
+        {
+            int[] keys = [
+                // Letters
+                ..Enumerable.Range(0x41, 26),
+                // Numbers
+                ..Enumerable.Range(0x30, 10),
+                // Arrows
+                0x25, 0x26, 0x27, 0x28,
+                // Modifiers
+                0x10, 0x11, 0x12, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5,
+                // Common keys
+                0x20, 0x0D, 0x1B, 0x08, 0x09,
+                // F1-F4
+                0x70, 0x71, 0x72, 0x73
+            ];
+
+            foreach (int vk in keys)
             {
-                // Ignorar errores silenciosamente
+                short state = WinInterop.GetAsyncKeyState(vk);
+                bool pressed = (state & 0x8000) != 0;
+                HandleStateChange(vk, pressed, InputType.Keyboard);
             }
         }
 
-        private static void CheckMouseButton(int button, string buttonName, long currentTime)
+        private static void HandleStateChange(int key, bool isPressed, InputType type, string buttonName = "")
         {
-            try
+            long now = Environment.TickCount64;
+
+            if (!_keyStates.TryGetValue(key, out var state))
+                state = new KeyState();
+
+            if (now - state.LastChange > DEBOUNCE_MS && isPressed != state.IsPressed)
             {
-                short state = WinInterop.GetAsyncKeyState(button);
-                bool isPressed = (state & 0x8000) != 0;
+                state.IsPressed = isPressed;
+                state.LastChange = now;
+                _keyStates[key] = state;
 
-                if (!_keyStates.TryGetValue(button, out KeyState keyState))
+                _callback?.Invoke(new InputEventArgs
                 {
-                    keyState = new KeyState();
-                    _keyStates[button] = keyState;
-                }
-
-                if (currentTime - keyState.LastChangeTime > DEBOUNCE_TIME_MS)
-                {
-                    if (isPressed != keyState.CurrentState)
-                    {
-                        keyState.CurrentState = isPressed;
-                        keyState.LastChangeTime = currentTime;
-                        _keyStates[button] = keyState;
-
-                        _inputEventCallback?.Invoke(new InputEventArgs
-                        {
-                            Type = InputType.MouseButton,
-                            KeyCode = button,
-                            IsPressed = isPressed,
-                            ButtonName = buttonName,
-                            MouseX = _lastMousePosition.X,
-                            MouseY = _lastMousePosition.Y
-                        });
-                    }
-                }
-            }
-            catch
-            {
-                // Ignorar errores
-            }
-        }
-
-        private static void CheckKeyboardInput()
-        {
-            long currentTime = Environment.TickCount64;
-
-            // Lista ampliada de teclas más comunes
-            var essentialKeys = new int[] {
-                // Letras principales
-                0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, // A-J
-                0x4B, 0x4C, 0x4D, 0x4E, 0x4F, 0x50, 0x51, 0x52, 0x53, 0x54, // K-T
-                0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, // U-Z
-                
-                // Números
-                0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, // 0-9
-                
-                // Teclas especiales
-                0x20, // Space
-                0x0D, // Enter
-                0x1B, // Escape
-                0x08, // Backspace
-                0x09, // Tab
-                
-                // Modificadores
-                0x10, 0x11, 0x12, // Shift, Ctrl, Alt
-                0xA0, 0xA1, // Left Shift, Right Shift
-                0xA2, 0xA3, // Left Ctrl, Right Ctrl
-                0xA4, 0xA5, // Left Alt, Right Alt
-                
-                // Flechas
-                0x25, 0x26, 0x27, 0x28, // Left, Up, Right, Down
-                
-                // Funciones
-                0x70, 0x71, 0x72, 0x73, // F1-F4
-                
-                // Numpad
-                0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, // Numpad 0-9
-            };
-
-            foreach (int vkCode in essentialKeys)
-            {
-                if (!_isMonitoring) break;
-
-                try
-                {
-                    // Usar tanto GetAsyncKeyState como GetKeyState para mejor detección
-                    short asyncState = WinInterop.GetAsyncKeyState(vkCode);
-                    short keyState = WinInterop.GetKeyState(vkCode);
-
-                    // Una tecla está presionada si cualquiera de los dos métodos lo detecta
-                    bool isPressed = ((asyncState & 0x8000) != 0) || ((keyState & 0x8000) != 0);
-
-                    if (!_keyStates.TryGetValue(vkCode, out KeyState currentKeyState))
-                    {
-                        currentKeyState = new KeyState();
-                        _keyStates[vkCode] = currentKeyState;
-                    }
-
-                    if (currentTime - currentKeyState.LastChangeTime > DEBOUNCE_TIME_MS)
-                    {
-                        if (isPressed != currentKeyState.CurrentState)
-                        {
-                            currentKeyState.CurrentState = isPressed;
-                            currentKeyState.LastChangeTime = currentTime;
-                            _keyStates[vkCode] = currentKeyState;
-
-                            _inputEventCallback?.Invoke(new InputEventArgs
-                            {
-                                Type = InputType.Keyboard,
-                                KeyCode = vkCode,
-                                IsPressed = isPressed,
-                                KeyName = Keyboard.GetKeyName(vkCode)
-                            });
-                        }
-                    }
-                }
-                catch
-                {
-                    // Ignorar errores individuales
-                }
+                    Type = type,
+                    KeyCode = key,
+                    IsPressed = isPressed,
+                    KeyName = type == InputType.Keyboard ? Keyboard.GetKeyName(key) : "",
+                    ButtonName = type == InputType.MouseButton ? buttonName : "",
+                    MouseX = _lastMouse.X,
+                    MouseY = _lastMouse.Y
+                });
             }
         }
     }

@@ -86,14 +86,14 @@ namespace AvalonInjectLib.Scripting
                 {
                     var baseAddress = ConvertToInt32(args[0]);
                     var value = ConvertToInt32(args[1]);
-                    MemoryManager.Write<int>(Process.GetCurrentProcess().Handle, baseAddress, value, null);
+                    MemoryManager.Write<int>(baseAddress, value);
                 }
                 else if (args.Length == 3) // baseAddress, value, offsets
                 {
                     var baseAddress = ConvertToInt32(args[0]);
                     var value = ConvertToInt32(args[1]);
                     var offsets = ExtractOffsetsFromTable(args[2]);
-                    MemoryManager.Write<int>(Process.GetCurrentProcess().Handle, baseAddress, value, offsets);
+                    MemoryManager.Write<int>(baseAddress, value, offsets);
                 }
                 return DynValue.Void;
             });
@@ -110,27 +110,27 @@ namespace AvalonInjectLib.Scripting
             memoryTable["ReadInt"] = (Func<long, DynValue, int>)((address, offsetsDyn) =>
             {
                 var offsets = ExtractOffsetsFromDynValue(offsetsDyn);
-                return MemoryManager.Read<int>(Process.GetCurrentProcess().Handle, new IntPtr(address), offsets);
+                return MemoryManager.Read<int>(address, offsets);
             });
 
             // Read byte value
             memoryTable["ReadByte"] = (Func<long, DynValue, byte>)((address, offsetsDyn) =>
             {
                 var offsets = ExtractOffsetsFromDynValue(offsetsDyn);
-                return MemoryManager.Read<byte>(Process.GetCurrentProcess().Handle, new IntPtr(address), offsets);
+                return MemoryManager.Read<byte>(address, offsets);
             });
 
             // Read float value
             memoryTable["ReadFloat"] = (Func<long, DynValue, float>)((address, offsetsDyn) =>
             {
                 var offsets = ExtractOffsetsFromDynValue(offsetsDyn);
-                return MemoryManager.Read<float>(Process.GetCurrentProcess().Handle, new IntPtr(address), offsets);
+                return MemoryManager.Read<float>(address, offsets);
             });
 
             // Read string value
             memoryTable["ReadString"] = (Func<long, DynValue, string>)((address, offsetsDyn) =>
             {
-                return MemoryManager.ReadString(Process.GetCurrentProcess().Handle, new IntPtr(address));
+                return MemoryManager.ReadString(address);
             });
         }
 

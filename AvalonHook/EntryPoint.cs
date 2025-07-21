@@ -1,12 +1,13 @@
 ﻿using AvalonInjectLib;
+using AvalonInjectLib.Scripting;
 using System.Runtime.InteropServices;
 
 namespace TargetGame
 {
     public unsafe class EntryPoint
     {
-        //public static MoonSharpScriptLoader? _luaLoader { private set; get; }
-        //static MenuSystem menuSystem = new MenuSystem();
+        public static MoonSharpScriptLoader? _luaLoader { private set; get; }
+        static MenuSystem menuSystem = new MenuSystem();
 
         // Control de estado mejorado
         private static bool _running = false;
@@ -27,38 +28,33 @@ namespace TargetGame
             return true;
         }
 
-        private static readonly List<(float X, float Y)> Waypoints = new()
-        {
-            (-0.64f, 0.56f),  // Posición 1
-            (0.60f, 0.58f),   // Posición 2
-            (0.67f, -0.56f),  // Posición 3
-            (-0.65f, -0.49f)  // Posición 4
-        };
-
         public static void StartLoop()
         {
             if (_running) return;
 
             try
             {
-                InitializeConsole();
+                Initialize();
+
                 Logger.Info("Thread principal iniciado");
 
                 _running = true;
 
-                int currentWaypointIndex = 0;
-
                 while (_running)
                 {
-                    var (x, y) = Waypoints[currentWaypointIndex];
+                    if (Application.GetKeyDown(Keys.Insert))
+                    {
+                        menuSystem.Toggle();
+                    }
+                    else if (Application.GetKeyDown(Keys.Home))
+                    {
+                        menuSystem.ReloadScripts();
+                    }
+                    _luaLoader?.UpdateAll();
 
-                    Logger.Info($"Moviendo a waypoint {currentWaypointIndex}: ({x}, {y})");
-                    // Llamada a tu función con las coordenadas
-                    InternalFunctionExecutor.CallFunction(0xF01220, x, y);
+                    Application.Sleep(10);
 
-                    currentWaypointIndex = (currentWaypointIndex + 1) % Waypoints.Count;
-
-                    Thread.Sleep(1000); // Ajusta según frecuencia deseada
+                    Application.InputUpdate();
                 }
 
                 Logger.Info("Thread principal terminado");
@@ -73,27 +69,23 @@ namespace TargetGame
 
         private static bool Initialize()
         {
+            InitializeConsole();
+
             InitializeScripts();
 
-            /*
-            var process = ProcessManager.AttachToSelf();
-            if (process == null)
-            {
-                Logger.Error("No se pudo attachear al proceso actual");
-                return false;
-            }
-
-            Engine.SetProcess(process);
-            Logger.Info($"Proceso - PID: {process.ProcessId:X8}, Handle: {process.Handle:X8}, ModuleBase: {process.ModuleBase:X8}");
+            Application.InitInput();
 
             
-            // 3. Inicializar renderer y menú de manera MÁS SEGURA
+            // Inicializar renderer
             if (!InitializeGraphicsSafely())
             {
                 Logger.Warning("Gráficos no disponibles, continuando en modo sin interfaz");
             }
-            */
+            
+            // Inicializar scripts
+            _luaLoader?.InitializeAll();
 
+ 
             Logger.Info("Inicialización completada exitosamente");
             return true;
         }
@@ -115,11 +107,8 @@ namespace TargetGame
                 return false;
             }
 
-            // menuSystem.Initialize();
-            // Renderer.SetRenderCallback(menuSystem.Render);
-
-            // 4. Inicializar scripts después de gráficos
-            // _luaLoader?.InitializeAll();
+             menuSystem.Initialize();
+             Renderer.SetRenderCallback(menuSystem.Render);
 
             return true;
         }
@@ -155,8 +144,8 @@ namespace TargetGame
 
         private static void InitializeScripts()
         {
-            // _luaLoader = new MoonSharpScriptLoader(Engine);
-            // _luaLoader.LoadScripts("Scripts");
+            _luaLoader = new MoonSharpScriptLoader();
+            _luaLoader.LoadScripts("Scripts");
             Logger.Info("Scripts inicializados correctamente");
         }
 

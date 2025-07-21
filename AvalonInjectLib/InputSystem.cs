@@ -3,7 +3,7 @@ using static AvalonInjectLib.Structs;
 
 namespace AvalonInjectLib
 {
-    public static class InputSystem
+    internal static class InputSystem
     {
         private static Dictionary<int, KeyStateInfo> _keyStates = new Dictionary<int, KeyStateInfo>();
         private static MouseStateInfo _mouseState = new MouseStateInfo();
@@ -16,11 +16,11 @@ namespace AvalonInjectLib
         /// </summary>
         private struct KeyStateInfo
         {
-            public bool CurrentState;
-            public bool PreviousState;
-            public long PressTimestamp;
-            public long ReleaseTimestamp;
-            public int RepeatCount;
+            internal bool CurrentState;
+            internal bool PreviousState;
+            internal long PressTimestamp;
+            internal long ReleaseTimestamp;
+            internal int RepeatCount;
         }
 
         /// <summary>
@@ -28,22 +28,22 @@ namespace AvalonInjectLib
         /// </summary>
         private struct MouseStateInfo
         {
-            public int X;
-            public int Y;
-            public int PreviousX;
-            public int PreviousY;
-            public bool HasMoved;
+            internal int X;
+            internal int Y;
+            internal int PreviousX;
+            internal int PreviousY;
+            internal bool HasMoved;
         }
 
         /// <summary>
         /// Inicializa el sistema de input para un proceso específico
         /// </summary>
-        public static void Initialize(uint processId)
+        internal static void Initialize()
         {
             if (_isInitializing) return;
 
-            _processId = processId;
-            UIEventSystem.Initialize(processId);
+            _processId = (uint)Process.GetCurrentProcess().Id;
+            UIEventSystem.Initialize(_processId);
 
             _frameTimer.Start();
 
@@ -70,11 +70,11 @@ namespace AvalonInjectLib
                 HasMoved = false
             };
 
-            KeyboardMouseMonitor.StartMonitoring(processId, OnInputEvent);
+            KeyboardMouseMonitor.StartMonitoring(_processId, OnInputEvent);
             _isInitializing = true;
         }
 
-        public static void Shutdown()
+        internal static void Shutdown()
         {
             KeyboardMouseMonitor.StopMonitoring();
             _frameTimer.Stop();
@@ -83,7 +83,7 @@ namespace AvalonInjectLib
         /// <summary>
         /// Actualiza los estados de las teclas (debe llamarse una vez por frame)
         /// </summary>
-        public static void Update()
+        internal static void Update()
         {
             // Actualizar estados previos del mouse
             _mouseState.PreviousX = _mouseState.X;
@@ -105,6 +105,43 @@ namespace AvalonInjectLib
 
                 _keyStates[keyCode] = state;
             }
+
+            // Aquí agregamos polling activo para teclado para mayor confiabilidad
+            PollKeyboard();
+        }
+
+        private static void PollKeyboard()
+        {
+            long now = _frameTimer.ElapsedMilliseconds;
+
+            foreach (var keyCode in _keyStates.Keys.ToList())
+            {
+                // Leer estado actual con GetAsyncKeyState
+                short state = WinInterop.GetAsyncKeyState(keyCode);
+                bool isPressed = (state & 0x8000) != 0;
+
+                var keyState = _keyStates[keyCode];
+
+                // Actualizar solo si cambio estado
+                if (keyState.CurrentState != isPressed)
+                {
+                    keyState.PreviousState = keyState.CurrentState;
+                    keyState.CurrentState = isPressed;
+
+                    if (isPressed)
+                    {
+                        keyState.PressTimestamp = now;
+                        keyState.RepeatCount = keyState.PreviousState ? keyState.RepeatCount + 1 : 1;
+                    }
+                    else
+                    {
+                        keyState.ReleaseTimestamp = now;
+                        keyState.RepeatCount = 0;
+                    }
+
+                    _keyStates[keyCode] = keyState;
+                }
+            }
         }
 
         private static void OnInputEvent(KeyboardMouseMonitor.InputEventArgs e)
@@ -119,10 +156,11 @@ namespace AvalonInjectLib
                     HandleMouseButtonEvent(e);
                     break;
 
+                    /*
                 case KeyboardMouseMonitor.InputType.MouseWheel:
                     HandleMouseWheelEvent(e);
                     break;
-
+*/
                 case KeyboardMouseMonitor.InputType.MouseMove:
                     HandleMouseMoveEvent(e);
                     break;
@@ -176,12 +214,11 @@ namespace AvalonInjectLib
                 }
                 // Las flechas y otras teclas especiales se ignoran
             }
-
         }
 
         private static void HandleMouseWheelEvent(KeyboardMouseMonitor.InputEventArgs e)
         {
-            UIEventSystem.UpdateWell(e.IsHorizontalWheel, e.WheelDelta);
+            //UIEventSystem.UpdateWell(e.IsHorizontalWheel, e.WheelDelta);
         }
 
         private static void HandleMouseButtonEvent(KeyboardMouseMonitor.InputEventArgs e)
@@ -232,7 +269,7 @@ namespace AvalonInjectLib
         /// <summary>
         /// Obtiene el estado detallado de una tecla
         /// </summary>
-        public static KeyState GetKeyState(Keys key)
+        internal static KeyState GetKeyState(Keys key)
         {
             int keyCode = (int)key;
             if (!_keyStates.TryGetValue(keyCode, out var state))
@@ -270,25 +307,25 @@ namespace AvalonInjectLib
         /// <summary>
         /// Verifica si la tecla está siendo presionada o mantenida
         /// </summary>
-        public static bool GetKey(Keys key)
+        internal static bool GetKey(Keys key)
             => GetKeyState(key) == KeyState.Holding || GetKeyState(key) == KeyState.Pressed;
 
         /// <summary>
         /// Verifica si la tecla acaba de ser presionada (solo primer frame)
         /// </summary>
-        public static bool GetKeyDown(Keys key)
+        internal static bool GetKeyDown(Keys key)
             => GetKeyState(key) == KeyState.Pressed;
 
         /// <summary>
         /// Verifica si la tecla acaba de ser liberada (solo primer frame)
         /// </summary>
-        public static bool GetKeyUp(Keys key)
+        internal static bool GetKeyUp(Keys key)
             => GetKeyState(key) == KeyState.Released;
 
         /// <summary>
         /// Obtiene el tiempo en milisegundos que la tecla ha estado presionada
         /// </summary>
-        public static long GetKeyPressDuration(Keys key)
+        internal static long GetKeyPressDuration(Keys key)
         {
             int keyCode = (int)key;
             if (!_keyStates.TryGetValue(keyCode, out var state) || !state.CurrentState)
@@ -300,7 +337,7 @@ namespace AvalonInjectLib
         /// <summary>
         /// Obtiene el número de veces que la tecla ha repetido desde que fue presionada
         /// </summary>
-        public static int GetKeyRepeatCount(Keys key)
+        internal static int GetKeyRepeatCount(Keys key)
         {
             int keyCode = (int)key;
             if (!_keyStates.TryGetValue(keyCode, out var state))
@@ -314,7 +351,7 @@ namespace AvalonInjectLib
         /// <summary>
         /// Obtiene el estado de un botón del mouse
         /// </summary>
-        public static KeyState GetMouseButtonState(MouseButton button)
+        internal static KeyState GetMouseButtonState(MouseButton button)
         {
             int keyCode = (int)button;
             if (!_keyStates.TryGetValue(keyCode, out var state))
@@ -334,7 +371,7 @@ namespace AvalonInjectLib
         /// <summary>
         /// Verifica si la tecla está actualmente presionada (sin importar si es el primer frame o no)
         /// </summary>
-        public static bool IsKeyPressed(Keys key)
+        internal static bool IsKeyPressed(Keys key)
         {
             int keyCode = (int)key;
             if (!_keyStates.TryGetValue(keyCode, out var state))
@@ -346,7 +383,7 @@ namespace AvalonInjectLib
         /// <summary>
         /// Verifica si el botón del mouse está actualmente presionado (sin importar si es el primer frame o no)
         /// </summary>
-        public static bool IsMouseButtonPressed(MouseButton button)
+        internal static bool IsMouseButtonPressed(MouseButton button)
         {
             int keyCode = (int)button;
             if (!_keyStates.TryGetValue(keyCode, out var state))
@@ -358,44 +395,44 @@ namespace AvalonInjectLib
         /// <summary>
         /// Verifica si el botón del mouse está siendo presionado
         /// </summary>
-        public static bool GetMouseButton(MouseButton button)
+        internal static bool GetMouseButton(MouseButton button)
             => GetMouseButtonState(button) == KeyState.Holding || GetMouseButtonState(button) == KeyState.Pressed;
 
         /// <summary>
         /// Verifica si el botón del mouse acaba de ser presionado
         /// </summary>
-        public static bool GetMouseButtonDown(MouseButton button)
+        internal static bool GetMouseButtonDown(MouseButton button)
             => GetMouseButtonState(button) == KeyState.Pressed;
 
         /// <summary>
         /// Verifica si el botón del mouse acaba de ser liberado
         /// </summary>
-        public static bool GetMouseButtonUp(MouseButton button)
+        internal static bool GetMouseButtonUp(MouseButton button)
             => GetMouseButtonState(button) == KeyState.Released;
 
         /// <summary>
         /// Obtiene la posición actual del mouse
         /// </summary>
-        public static Vector2 GetMousePosition()
+        internal static Vector2 GetMousePosition()
             => new (_mouseState.X, _mouseState.Y);
 
         /// <summary>
         /// Obtiene el delta de movimiento del mouse desde el último frame
         /// </summary>
-        public static Vector2 GetMouseDelta()
+        internal static Vector2 GetMouseDelta()
             => new (_mouseState.X - _mouseState.PreviousX, _mouseState.Y - _mouseState.PreviousY);
 
         /// <summary>
         /// Verifica si el mouse se ha movido en este frame
         /// </summary>
-        public static bool HasMouseMoved()
+        internal static bool HasMouseMoved()
             => _mouseState.HasMoved;
     }
 
     /// <summary>
     /// Estados posibles de una tecla
     /// </summary>
-    public enum KeyState
+    internal enum KeyState
     {
         Up,       // Tecla no presionada
         Pressed,  // Tecla acaba de ser presionada
@@ -406,7 +443,7 @@ namespace AvalonInjectLib
     /// <summary>
     /// Enumeración para los botones del mouse
     /// </summary>
-    public enum MouseButton
+    internal enum MouseButton
     {
         Left = 0x01,
         Right = 0x02,

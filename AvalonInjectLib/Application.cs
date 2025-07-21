@@ -42,7 +42,7 @@
             }
         }
 
-        public static bool QueueUserWorkItem<TState>(Action<TState> callBack, TState state, bool preferLocal)
+        internal static bool QueueUserWorkItem<TState>(Action<TState> callBack, TState state, bool preferLocal)
         {
             if (callBack == null)
                 return false;
@@ -78,31 +78,6 @@
             return WinInterop.AttachConsole(-1);
         }
 
-        /// <summary>
-        /// Libera una biblioteca (DLL) del espacio de direcciones del proceso
-        /// </summary>
-        /// <param name="handle">Handle de la biblioteca a liberar</param>
-        public static void FreeLibrary(nint handle)
-        {
-            if (handle != IntPtr.Zero)
-            {
-                WinInterop.FreeLibrary(handle);
-            }
-        }
-
-        /// <summary>
-        /// Libera una biblioteca y termina el hilo actual
-        /// </summary>
-        /// <param name="handle">Handle de la biblioteca a liberar</param>
-        /// <param name="exitCode">Código de salida del hilo</param>
-        public static void FreeLibraryAndExitThread(nint handle, int exitCode)
-        {
-            if (handle != IntPtr.Zero)
-            {
-                WinInterop.FreeLibraryAndExitThread(handle, (uint)exitCode);
-            }
-        }
-
         public static bool SetConsoleOutputCP(int wCodePageID)
         {
             return WinInterop.SetConsoleOutputCP((uint)wCodePageID);
@@ -122,6 +97,22 @@
         public static IntPtr GetModuleHandle(string lpModuleName)
         {
             return WinInterop.GetModuleHandle(lpModuleName);
+        }
+
+        public static bool InitInput()
+        {
+            InputSystem.Initialize();
+            return true;
+        }
+
+        public static void InputUpdate()
+        {
+            InputSystem.Update();
+        }
+
+        public static bool GetKeyDown(Keys key)
+        {
+           return InputSystem.GetKeyDown(key);
         }
     }
 }
