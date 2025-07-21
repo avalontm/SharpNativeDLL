@@ -3,15 +3,15 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.4.33020.496
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AssaultCube", "SharpNativeDLL\AssaultCube.csproj", "{470A763A-60F8-4D96-B6AB-5D90A4092016}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AvalonInjectLib", "AvalonInjectLib\AvalonInjectLib.csproj", "{826A7753-58A0-4DB5-93CB-E6B8788E0B95}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TargetGame", "TargetGame\TargetGame.csproj", "{233975AC-8435-4525-B9F3-BF69C712B658}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AvalonLoader", "AvalonLoader\AvalonLoader.csproj", "{3B9F043E-4706-0B49-C152-E859498D0E04}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AvalonLoader.Desktop", "AvalonLoader.Desktop\AvalonLoader.Desktop.csproj", "{87BA56EC-61A0-901D-B654-1B334F8E5B64}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AvalonHook", "AvalonHook\AvalonHook.csproj", "{39D298B0-3ABE-4A9F-8A7C-80000F0325EA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MoonSharp.Interprete", "MoonSharp.Interprete\MoonSharp.Interprete.csproj", "{2E0E6506-1F99-4E58-91CF-FCE9E641D0D1}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -19,18 +19,10 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{470A763A-60F8-4D96-B6AB-5D90A4092016}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{470A763A-60F8-4D96-B6AB-5D90A4092016}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{470A763A-60F8-4D96-B6AB-5D90A4092016}.Release|Any CPU.ActiveCfg = Release|x64
-		{470A763A-60F8-4D96-B6AB-5D90A4092016}.Release|Any CPU.Build.0 = Release|x64
 		{826A7753-58A0-4DB5-93CB-E6B8788E0B95}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{826A7753-58A0-4DB5-93CB-E6B8788E0B95}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{826A7753-58A0-4DB5-93CB-E6B8788E0B95}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{826A7753-58A0-4DB5-93CB-E6B8788E0B95}.Release|Any CPU.Build.0 = Release|Any CPU
-		{233975AC-8435-4525-B9F3-BF69C712B658}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{233975AC-8435-4525-B9F3-BF69C712B658}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{233975AC-8435-4525-B9F3-BF69C712B658}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{233975AC-8435-4525-B9F3-BF69C712B658}.Release|Any CPU.Build.0 = Release|Any CPU
 		{3B9F043E-4706-0B49-C152-E859498D0E04}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{3B9F043E-4706-0B49-C152-E859498D0E04}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3B9F043E-4706-0B49-C152-E859498D0E04}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -39,6 +31,14 @@ Global
 		{87BA56EC-61A0-901D-B654-1B334F8E5B64}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{87BA56EC-61A0-901D-B654-1B334F8E5B64}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{87BA56EC-61A0-901D-B654-1B334F8E5B64}.Release|Any CPU.Build.0 = Release|Any CPU
+		{39D298B0-3ABE-4A9F-8A7C-80000F0325EA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{39D298B0-3ABE-4A9F-8A7C-80000F0325EA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{39D298B0-3ABE-4A9F-8A7C-80000F0325EA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{39D298B0-3ABE-4A9F-8A7C-80000F0325EA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2E0E6506-1F99-4E58-91CF-FCE9E641D0D1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2E0E6506-1F99-4E58-91CF-FCE9E641D0D1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2E0E6506-1F99-4E58-91CF-FCE9E641D0D1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2E0E6506-1F99-4E58-91CF-FCE9E641D0D1}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

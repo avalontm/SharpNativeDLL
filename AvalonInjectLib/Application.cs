@@ -1,13 +1,62 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace AvalonInjectLib
+﻿namespace AvalonInjectLib
 {
-    public static  class LibManager
+    public static class Application
     {
+        public static bool Run<TState>(Action<TState> callBack, TState state, bool preferLocal = false)
+        {
+            if (callBack == null)
+                return false;
+
+            try
+            {
+                // Usa directamente la sobrecarga genérica de ThreadPool
+                return ThreadPool.QueueUserWorkItem(callBack, state, preferLocal);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public static bool Run(Action callBack, bool preferLocal = false)
+        {
+            if (callBack == null)
+                return false;
+
+            try
+            {
+                if (preferLocal)
+                {
+                    // Para preferLocal con Action sin estado, usamos la versión genérica
+                    return ThreadPool.QueueUserWorkItem<object>(_ => callBack(), null, preferLocal);
+                }
+                else
+                {
+                    // Versión clásica con WaitCallback
+                    return ThreadPool.QueueUserWorkItem(_ => callBack());
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public static bool QueueUserWorkItem<TState>(Action<TState> callBack, TState state, bool preferLocal)
+        {
+            if (callBack == null)
+                return false;
+
+            try
+            {
+                return ThreadPool.QueueUserWorkItem(callBack, state, preferLocal);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public static bool AllocConsole()
         {
             bool status = WinInterop.AllocConsole();
@@ -22,11 +71,6 @@ namespace AvalonInjectLib
         public static bool AttachConsole(int dwProcessId)
         {
             return WinInterop.AttachConsole(dwProcessId);
-        }
-
-        public static bool DisableThreadLibraryCalls(IntPtr hModule)
-        {
-            return WinInterop.DisableThreadLibraryCalls(hModule);
         }
 
         public static bool FreeConsole()

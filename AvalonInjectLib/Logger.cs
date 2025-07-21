@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-
-namespace AvalonInjectLib
+﻿namespace AvalonInjectLib
 {
     public static class Logger
     {
@@ -18,7 +15,6 @@ namespace AvalonInjectLib
         public static bool EnableDebug { get; set; } = true;
         public static bool EnableTimestamp { get; set; } = true;
         public static LogLevel MinimumLevel { get; set; } = LogLevel.Debug;
-        public static int MaxLinesBeforeClear { get; set; } = 200;
 
         private static readonly Dictionary<LogLevel, ConsoleColor> _levelColors = new()
         {
@@ -30,8 +26,6 @@ namespace AvalonInjectLib
         };
 
         private static readonly object _lock = new();
-
-        private static int _lineCount = 0;
         private static bool _consoleAvailable = true;
 
         public static void Log(LogLevel level, string message, string module = null)
@@ -73,15 +67,6 @@ namespace AvalonInjectLib
                         Console.WriteLine(message);
 
                         Console.ResetColor();
-
-                        _lineCount++;
-
-                        if (_lineCount >= MaxLinesBeforeClear)
-                        {
-                            Console.Clear();
-                            Console.SetBufferSize(Console.WindowWidth, Console.WindowHeight);
-                            _lineCount = 0;
-                        }
                     }
                 }
                 catch

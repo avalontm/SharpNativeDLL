@@ -28,9 +28,12 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="MoonSharp" Version="2.0.0" />
 		<PackageReference Include="StbImageSharp" Version="2.30.15" />
 		<PackageReference Include="StbTrueTypeSharp" Version="1.26.12" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\MoonSharp.Interprete\MoonSharp.Interprete.csproj" />
 	</ItemGroup>
 
 </Project>

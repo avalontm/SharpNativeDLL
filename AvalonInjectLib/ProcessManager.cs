@@ -235,24 +235,6 @@ namespace AvalonInjectLib
             }
         }
 
-        /// <summary>
-        /// Crea un hilo nativo usando P/Invoke sin depender del runtime de .NET.
-        /// </summary>
-        /// <param name="threadProc">Puntero a función no administrada.</param>
-        /// <param name="parameter">Parámetro a pasar al hilo.</param>
-        /// <returns>Handle del hilo.</returns>
-        public static IntPtr CreateNativeThread(IntPtr lpStartAddress, IntPtr lpParameter = default, uint dwCreationFlags = 0)
-        {
-
-            return WinInterop.CreateThread(
-                IntPtr.Zero,
-                0,
-                lpStartAddress,
-                lpParameter,
-                dwCreationFlags,
-                out _);
-        }
-
         public static void PreventUnload(IntPtr hModule)
         {
             StringBuilder path = new StringBuilder(260);

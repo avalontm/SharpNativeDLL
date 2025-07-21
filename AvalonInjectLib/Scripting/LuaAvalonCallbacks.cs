@@ -2,10 +2,7 @@
 using AvalonInjectLib.Interfaces;
 using MoonSharp.Interpreter;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Net;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
 namespace AvalonInjectLib.Scripting
 {
