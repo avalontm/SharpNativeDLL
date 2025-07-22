@@ -1,9 +1,20 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+	<OutputType>Library</OutputType>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+	  <!-- Configuración de Trimming y AOT -->
+	  <PublishAot>true</PublishAot>
+	  <IsAotCompatible>true</IsAotCompatible>
+
+	  <!-- Optimizaciones adicionales -->
+	  <InvariantGlobalization>true</InvariantGlobalization>
+	  <IlcOptimizationPreference>Size</IlcOptimizationPreference>
+	  <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+	  <IlcDisableReflection>false</IlcDisableReflection>
   </PropertyGroup>
 
 </Project>

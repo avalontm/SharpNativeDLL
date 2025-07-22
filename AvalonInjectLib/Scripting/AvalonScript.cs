@@ -1,5 +1,5 @@
-﻿using AvalonInjectLib.Interfaces;
-
+﻿
+using AvalonInjectLib.Interfaces;
 using MoonSharp.Interpreter;
 
 namespace AvalonInjectLib.Scripting

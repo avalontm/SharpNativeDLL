@@ -6,8 +6,8 @@ namespace TargetGame
 {
     public unsafe class EntryPoint
     {
-        public static MoonSharpScriptLoader? _luaLoader { private set; get; }
-        static MenuSystem menuSystem = new MenuSystem();
+       public static MoonSharpScriptLoader? _luaLoader { private set; get; }
+       static MenuSystem menuSystem = new MenuSystem();
 
         // Control de estado mejorado
         private static bool _running = false;
@@ -50,10 +50,16 @@ namespace TargetGame
                     {
                         menuSystem.ReloadScripts();
                     }
+                    else if (Application.GetKeyDown(Keys.End))
+                    {
+                        Logger.EnableDebug = !Logger.EnableDebug;
+                        Logger.Info($"Debug mode {(Logger.EnableDebug ? "activado" : "desactivado")}");
+                    }
+
+                    menuSystem.MainMenu.Update();
                     _luaLoader?.UpdateAll();
 
-                    Application.Sleep(10);
-
+                    Application.Sleep(100);
                     Application.InputUpdate();
                 }
 
@@ -85,7 +91,6 @@ namespace TargetGame
             // Inicializar scripts
             _luaLoader?.InitializeAll();
 
- 
             Logger.Info("Inicialización completada exitosamente");
             return true;
         }
@@ -155,12 +160,12 @@ namespace TargetGame
             Application.SetConsoleOutputCP(65001);
             Application.AllocConsole();
 
-            Console.Title = "AvalonInjectLib - Universal Memory Cheat";
-            Console.WriteLine("=== Universal Memory Cheat - V1.0.0.1 ===");
+            Console.Title = "AvalonHook - Universal Cheat Engine";
+            Console.WriteLine("=== Universal Cheat Engine - V1.0.0.1 ===");
             Console.WriteLine("Estado: Inyectado correctamente");
             Console.WriteLine("Presiona INSERT para toggle del menú");
             Console.WriteLine("Presiona END para cerrar el cheat");
-            Console.WriteLine("Presiona F1 para debug info");
+            Console.WriteLine("Presiona FIN para debug info");
             Console.WriteLine("=====================================");
 
             Logger.Info("Consola inicializada");

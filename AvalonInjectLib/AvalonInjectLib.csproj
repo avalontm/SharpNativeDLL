@@ -33,11 +33,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <ProjectReference Include="..\MoonSharp.Interprete\MoonSharp.Interprete.csproj" />
+	  <Folder Include="Properties\" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <Folder Include="Properties\" />
+	  <ProjectReference Include="..\MoonSharp.Interprete\MoonSharp.Interprete.csproj" />
 	</ItemGroup>
 
 </Project>

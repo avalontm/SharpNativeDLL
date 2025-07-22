@@ -80,7 +80,7 @@ namespace TargetGame
             _isReloading = true;
 
             Thread.Sleep(100);
-            //MoonSharpScriptLoader.Instance?.ReloadScripts();
+            MoonSharpScriptLoader.Instance?.ReloadScripts();
             LoadScripts();
 
             _isReloading = false;
@@ -92,28 +92,10 @@ namespace TargetGame
         {
             if (!_isInitialized) return;
 
-            // Variables para el control de FPS
-            double targetFrameTime = 1000.0 / 60.0; // 60 FPS en milisegundos
-            DateTime now = DateTime.Now;
-            TimeSpan elapsed;
-
             if (!_isReloading)
             {
-                // Ejecutar el código específico a ~60 FPS
-                elapsed = now - _lastFrameTime;
-                if (elapsed.TotalMilliseconds >= targetFrameTime)
-                {
-                    _mainMenu.Update();
-                    
-                    if (MoonSharpScriptLoader.Instance != null)
-                    {
-                        MoonSharpScriptLoader.Instance?.UpdateAll();
-                    }
-                    _lastFrameTime = now; // Actualizar el tiempo del último frame
-                }
-
                 // Procesar fuentes pendientes en cada frame de renderizado (cuando hay contexto OpenGL)
-                Font.ProcessPendingFonts();
+                Font.ProcessDefault();
                 
                 if (MoonSharpScriptLoader.Instance != null)
                 {
@@ -127,9 +109,6 @@ namespace TargetGame
             }
 
         }
-
-        // Añade este campo a tu clase
-        private DateTime _lastFrameTime = DateTime.Now;
 
         private void DrawReloadIndicator()
         {

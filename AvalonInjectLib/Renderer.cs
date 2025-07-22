@@ -69,18 +69,6 @@ namespace AvalonInjectLib
         }
 
         /// <summary>
-        /// Unregisters a rendering callback
-        /// </summary>
-        /// <param name="render">Callback to remove</param>
-        public static void ClearRenderCallback()
-        {
-            if (CurrentAPI == GraphicsAPI.OpenGL)
-                OpenGLHook.ClearRenderCallback();
-            else
-                DirectXHook.ClearRenderCallback();
-        }
-
-        /// <summary>
         /// Draws a filled rectangle
         /// </summary>
         public static void DrawRect(float x, float y, float w, float h, UIFramework.Color color)
@@ -160,7 +148,7 @@ namespace AvalonInjectLib
             switch (CurrentAPI)
             {
                 case GraphicsAPI.OpenGL:
-                    OpenGLHook.DrawText(font.GetFontId(), text, position, _tempColor, font.Size);
+                    FontRenderer.DrawText(font.GetFontId(), text, position.X, position.Y, font.Size, _tempColor);
                     break;
                 case GraphicsAPI.DirectX:
                     DirectXHook.DrawText(text, position, _tempColor, font.Size);
@@ -193,9 +181,9 @@ namespace AvalonInjectLib
         public static void DrawCircle(Vector2 center, float radius, UIFramework.Color color)
         {
             ConvertColor(ref color, ref _tempColor);
-
+            /*
             if (CurrentAPI == GraphicsAPI.OpenGL)
-                OpenGLHook.DrawFilledCircle(center, radius, _tempColor);
+                OpenGLHook.DrawFilledCircle(center, radius, _tempColor);*/
         }
 
         /// <summary>

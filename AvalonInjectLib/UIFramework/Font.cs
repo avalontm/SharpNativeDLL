@@ -417,9 +417,12 @@ namespace AvalonInjectLib
         /// <summary>
         /// Procesa fuentes pendientes (debe llamarse en el loop principal)
         /// </summary>
-        public static void ProcessPendingFonts()
+        public static void ProcessDefault()
         {
-            FontRenderer.ProcessPendingFonts();
+            if (!_defaultFont?.IsReady ?? false)
+            {
+                FontRenderer.ProcessPendingFonts();
+            }
         }
 
         ~Font()

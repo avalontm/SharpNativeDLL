@@ -445,6 +445,14 @@ namespace AvalonInjectLib
             IntPtr hSnapshot,
             ref MODULEENTRY32W lpme);
 
+        [DllImport("kernel32.dll")]
+        internal static extern IntPtr GetProcAddress(IntPtr hModule, string lpProcName);
+
+        [DllImport("kernel32.dll")]
+        internal static extern IntPtr VirtualAlloc(IntPtr lpAddress, uint dwSize, uint flAllocationType, uint flProtect);
+
+        [DllImport("kernel32.dll")]
+        internal static extern bool VirtualFree(IntPtr lpAddress, uint dwSize, uint dwFreeType);
         /// <summary>
         /// Retrieves information about the first process encountered in a system snapshot (Unicode version)
         /// </summary>

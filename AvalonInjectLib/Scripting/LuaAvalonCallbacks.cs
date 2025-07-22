@@ -1,5 +1,4 @@
-﻿
-using AvalonInjectLib.Interfaces;
+﻿using AvalonInjectLib.Interfaces;
 using MoonSharp.Interpreter;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
